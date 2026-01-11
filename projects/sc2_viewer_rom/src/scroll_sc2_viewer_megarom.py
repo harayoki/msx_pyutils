@@ -134,6 +134,8 @@ from mmsxxasmhelper.msxutils import (
     quantize_msx1_image_two_colors,
     parse_color,
     nearest_palette_index,
+    append_webmsx_rom_type_suffix,
+    WebMSXRomType,
 )
 from mmsxxasmhelper.config_scene import (
     Screen0ConfigEntry,
@@ -257,6 +259,13 @@ class Messages:
         return {
             "jp": "ROM情報テキストを出力するかどうか (default: ON)",
             "en": "Whether to output ROM info text (default: ON).",
+        }
+
+    @_localized
+    def rom_type_suffix_help(cls) -> dict[str, str]:
+        return {
+            "jp": "ROMファイル名へ WebMSX の種別サフィックスを自動付与する (default: ON)",
+            "en": "Append a WebMSX ROM type suffix to the output file name (default: ON).",
         }
 
     @_localized
@@ -524,6 +533,12 @@ def parse_args() -> argparse.Namespace:
         action=argparse.BooleanOptionalAction,
         default=True,
         help=Messages.rom_info_help(),
+    )
+    parser.add_argument(
+        "--rom-type-suffix",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=Messages.rom_type_suffix_help(),
     )
     parser.add_argument(
         "--beep",
@@ -2574,6 +2589,10 @@ def main() -> None:
     bgm_data: bytes | None = None
     bgm_enabled_default = args.bgm
 
+    if args.output is not None and args.rom_type_suffix:
+        args.output = append_webmsx_rom_type_suffix(
+            args.output, WebMSXRomType.ASCII16
+        )
     if args.output is not None:
         ensure_output_writable(args.output)
 
@@ -2705,12 +2724,14 @@ def main() -> None:
     out = args.output
     if out is None:
         if len(prepared_groups) == 1:
-            name = f"{prepared_groups[0][0]}_scroll[{image_data_list[0].tile_rows * 8}px][ASCII16]"
+            name = f"{prepared_groups[0][0]}_scroll[{image_data_list[0].tile_rows * 8}px]"
         elif prepared_groups:
-            name = f"{prepared_groups[0][0]}_scroll{len(prepared_groups)}imgs[ASCII16]"
+            name = f"{prepared_groups[0][0]}_scroll{len(prepared_groups)}imgs"
         else:
-            name = f"debug_scroll{args.debug_image_index}[ASCII16]"
+            name = f"debug_scroll{args.debug_image_index}"
         out = Path.cwd() / f"{name}.rom"
+    if args.rom_type_suffix:
+        out = append_webmsx_rom_type_suffix(out, WebMSXRomType.ASCII16)
 
     ensure_output_writable(out)
 
