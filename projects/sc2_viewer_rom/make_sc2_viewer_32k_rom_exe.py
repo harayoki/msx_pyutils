@@ -1,4 +1,4 @@
-"""Utilities to bundle create_scroll_megarom into a single-file executable with Nuitka."""
+"""Utilities to bundle create_sc2_32k_rom into a single-file executable with Nuitka."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ from pathlib import Path
 
 
 def build_executable(output_dir: Path) -> None:
-    """Compile ``create_scroll_megarom.py`` into a one-file executable via Nuitka."""
+    """Compile ``sc2_viewer_32k_rom.py`` into a one-file executable via Nuitka."""
     script_dir = Path(__file__).resolve().parent
-    target = script_dir / "src" / "create_scroll_megarom.py"
+    target = script_dir / "src" / "sc2_viewer_32k_rom.py"
     if not target.exists():
         raise FileNotFoundError(f"Cannot find source script: {target}")
 
@@ -35,7 +35,7 @@ def build_executable(output_dir: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Build a standalone executable for create_scroll_megarom using Nuitka",
+        description="Build a standalone executable for create_sc2_32k_rom using Nuitka",
     )
     default_output = Path(__file__).resolve().parent / "dist"
     parser.add_argument(
