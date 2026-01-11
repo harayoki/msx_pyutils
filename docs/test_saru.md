@@ -1,1 +1,1 @@
-![test_saru.png](images%2Ftest_saru.png)
+![saru.png](images%2Fsaru.png)
