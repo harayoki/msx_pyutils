@@ -4,6 +4,8 @@ MSX 関連マクロ & 関数 他
 
 from __future__ import annotations
 
+from enum import StrEnum
+from pathlib import Path
 from typing import Callable, Concatenate, Literal, ParamSpec, Sequence
 
 from mmsxxasmhelper.core import *
@@ -50,6 +52,8 @@ __all__ = [
     "palette_distance",
     "nearest_palette_index",
     "quantize_msx1_image_two_colors",
+    "WebMSXRomType",
+    "append_webmsx_rom_type_suffix",
 ]
 P = ParamSpec("P")
 
@@ -103,6 +107,60 @@ BASIC_COLORS_MSX1 = [
     (204, 204, 204),
     (255, 255, 255),
 ]
+
+
+class WebMSXRomType(StrEnum):
+    """WebMSX ROM types: megaROM仕様と通常ROMのみ対応。
+
+    Reference: https://github.com/ppeccin/webmsx?tab=readme-ov-file#valid-formats
+    """
+
+    NORMAL = "Normal"
+    MIRRORED = "Mirrored"
+    NOT_MIRRORED = "NotMirrored"
+    ASCII8 = "ASCII8"
+    ASCII16 = "ASCII16"
+    KONAMI = "Konami"
+    KONAMI_SCC = "KonamiSCC"
+    KONAMI_SCCI = "KonamiSCCI"
+    ASCII8_SRAM2 = "ASCII8SRAM2"
+    ASCII8_SRAM8 = "ASCII8SRAM8"
+    ASCII16_SRAM2 = "ASCII16SRAM2"
+    ASCII16_SRAM8 = "ASCII16SRAM8"
+    MEGARAM = "MegaRAM"
+    GAME_MASTER_2 = "GameMaster2"
+    KOEI_SRAM8 = "KoeiSRAM8"
+    KOEI_SRAM32 = "KoeiSRAM32"
+    WIZARDRY = "Wizardry"
+    FMPAC = "FMPAC"
+    FMPAK = "FMPAK"
+    MSXDOS2 = "MSXDOS2"
+    MAJUTSUSHI = "Majutsushi"
+    SYNTHESIZER = "Synthesizer"
+    R_TYPE = "RType"
+    CROSS_BLAIM = "CrossBlaim"
+    MANBOW2 = "Manbow2"
+    HARRY_FOX = "HarryFox"
+    AL_QURAN = "AlQuran"
+    AL_QURAN_DECODED = "AlQuranDecoded"
+    HALNOTE = "Halnote"
+    SUPER_SWANGI = "SuperSwangi"
+    SUPER_LODE_RUNNER = "SuperLodeRunner"
+    DOOLY = "Dooly"
+    ZEMINA_80IN1 = "Zemina80in1"
+    ZEMINA_90IN1 = "Zemina90in1"
+    ZEMINA_126IN1 = "Zemina126in1"
+    MSX_WRITE = "MSXWrite"
+    KONAMI_ULTIMATE_COLLECTION = "KonamiUltimateCollection"
+
+
+def append_webmsx_rom_type_suffix(path: Path | str, rom_type: WebMSXRomType) -> Path:
+    """Append a WebMSX ROM type suffix (e.g. [ASCII16]) if not already present."""
+    target = Path(path)
+    suffix = f"[{rom_type}]"
+    if target.stem.endswith(suffix):
+        return target
+    return target.with_name(f"{target.stem}{suffix}{target.suffix}")
 
 
 def palette_distance(idx_a: int, idx_b: int) -> int:
