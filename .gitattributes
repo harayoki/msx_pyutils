@@ -1,7 +1,7 @@
 *.exe filter=lfs diff=lfs merge=lfs -text
 *.zip filter=lfs diff=lfs merge=lfs -text
-*.png filter=lfs diff=lfs merge=lfs -text
-*.jpg filter=lfs diff=lfs merge=lfs -text
+; *.png filter=lfs diff=lfs merge=lfs -text
+; *.jpg filter=lfs diff=lfs merge=lfs -text
 *.sc2 filter=lfs diff=lfs merge=lfs -text
 *.sc5 filter=lfs diff=lfs merge=lfs -text
 *.sc7 filter=lfs diff=lfs merge=lfs -text
