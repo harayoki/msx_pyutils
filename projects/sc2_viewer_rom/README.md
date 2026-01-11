@@ -12,6 +12,8 @@
 - 通常は `scroll_sc2_viewer_megarom.py` を使用する。
   - 高度な処理をしているため、動かない場合は `sc2_viewer_megarom.py` を使う。
 - メガロムではなく32kROM版が欲しい場合は `sc2_viewer_32k_rom.py` を使う。
+- msx1pq_cli に渡す細かいカスタマイズは `--msx1pq-cli-distance` と `--msx1pq-cli-no-dither` のみ提供する。
+  - それ以上の調整が必要な場合は msx1pq_cli で量子化済み PNG を作成し、このツールに入力する。
 
 ## 動作確認
 - それぞれのROMファイルは OPENMSX と webMSX で動作確認済み。
@@ -37,6 +39,8 @@
 - Use `scroll_sc2_viewer_megarom.py` by default.
   - If it does not work due to the advanced processing, use `sc2_viewer_megarom.py`.
 - If you need a 32kROM version instead of a MegaROM, use `sc2_viewer_32k_rom.py`.
+- Only `--msx1pq-cli-distance` and `--msx1pq-cli-no-dither` are exposed for msx1pq_cli customization.
+  - For more advanced control, create quantized PNGs with msx1pq_cli directly and feed them into this tool.
 
 ## Tested
 - The ROMs have been tested on OPENMSX and webMSX.
