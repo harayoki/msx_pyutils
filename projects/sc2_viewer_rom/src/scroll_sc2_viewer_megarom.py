@@ -178,15 +178,15 @@ class Messages:
     @_localized
     def input_help(cls) -> dict[str, str]:
         return {
-            "jp": "入力 PNG。複数指定すると縦に連結。-i を複数回指定すると別画像として扱う。",
-            "en": "Input PNGs. Multiple files are stacked vertically. Repeat -i to create separate images.",
+            "jp": "入力 PNG。複数指定すると縦に連結。-i を複数回指定すると別画像として扱う。ディレクトリ指定時は直下の PNG をすべて追加する。",
+            "en": "Input PNGs. Multiple files are stacked vertically. Repeat -i to create separate images. If a directory is provided, all PNGs in it are added.",
         }
 
     @_localized
     def input_each_help(cls) -> dict[str, str]:
         return {
-            "jp": "--input-each に列挙したファイルは連結せず、各ファイルを別画像として扱う",
-            "en": "Treat each --input-each file as a separate image without stacking.",
+            "jp": "--input-each に列挙したファイルは連結せず、各ファイルを別画像として扱う。ディレクトリ指定時は直下の PNG を個別画像として扱う。",
+            "en": "Treat each --input-each file as a separate image without stacking. If a directory is provided, its PNGs are treated as separate images.",
         }
 
     @_localized
@@ -869,6 +869,39 @@ def find_msx1pq_cli(path: Path | None) -> Path | None:
 
 def quantized_output_path(prepared_png: Path, output_dir: Path) -> Path:
     return output_dir / f"{prepared_png.stem}{QUANTIZED_SUFFIX}{prepared_png.suffix}"
+
+
+def list_pngs_in_dir(path: Path) -> list[Path]:
+    return sorted(
+        entry
+        for entry in path.iterdir()
+        if entry.is_file() and entry.suffix.lower() == ".png"
+    )
+
+
+def expand_input_group(paths: Sequence[Path]) -> list[Path]:
+    expanded: list[Path] = []
+    for path in paths:
+        if not path.exists():
+            raise SystemExit(Messages.path_not_found(path=path))
+        if path.is_dir():
+            expanded.extend(list_pngs_in_dir(path))
+        else:
+            expanded.append(path)
+    return expanded
+
+
+def expand_input_each(paths: Sequence[Path]) -> list[list[Path]]:
+    groups: list[list[Path]] = []
+    for path in paths:
+        if not path.exists():
+            raise SystemExit(Messages.path_not_found(path=path))
+        if path.is_dir():
+            for entry in list_pngs_in_dir(path):
+                groups.append([entry])
+        else:
+            groups.append([path])
+    return groups
 
 
 def is_cached_image_valid(
@@ -2581,9 +2614,10 @@ def main() -> None:
     input_format_counter: Counter[str] = Counter()
     total_input_images = 0
 
-    input_groups = [list(group) for group in args.input]
+    input_groups = [expand_input_group(group) for group in args.input]
     if args.input_each:
-        input_groups.extend([path] for group in args.input_each for path in group)
+        for group in args.input_each:
+            input_groups.extend(expand_input_each(group))
     prepared_groups: list[tuple[str, list[tuple[str, Image.Image, float]]]] = []
     image_data_list: list[ImageData] = []
     rom: bytes
