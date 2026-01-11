@@ -220,6 +220,20 @@ class Messages:
         }
 
     @_localized
+    def msx1pq_cli_distance_help(cls) -> dict[str, str]:
+        return {
+            "jp": "msx1pq_cli の距離パラメータ (--distance) を指定する",
+            "en": "Set msx1pq_cli distance parameter (--distance).",
+        }
+
+    @_localized
+    def msx1pq_cli_no_dither_help(cls) -> dict[str, str]:
+        return {
+            "jp": "msx1pq_cli の --no-dither を付与する",
+            "en": "Add --no-dither to msx1pq_cli.",
+        }
+
+    @_localized
     def workdir_help(cls) -> dict[str, str]:
         return {
             "jp": "中間ファイルを書き出すワークフォルダ（未指定なら一時フォルダ）",
@@ -497,6 +511,16 @@ def parse_args() -> argparse.Namespace:
         "--msx1pq-cli",
         type=Path,
         help=Messages.msx1pq_cli_help(),
+    )
+    parser.add_argument(
+        "--msx1pq-cli-distance",
+        type=float,
+        help=Messages.msx1pq_cli_distance_help(),
+    )
+    parser.add_argument(
+        "--msx1pq-cli-no-dither",
+        action="store_true",
+        help=Messages.msx1pq_cli_no_dither_help(),
     )
     parser.add_argument(
         "-W",
@@ -946,7 +970,14 @@ def load_quantized_image(
         return build_image_data_from_image(quantized_image)
 
 
-def run_msx1pq_cli(cli: Path, prepared_png: Path, output_dir: Path) -> Path:
+def run_msx1pq_cli(
+    cli: Path,
+    prepared_png: Path,
+    output_dir: Path,
+    *,
+    distance: float | None,
+    no_dither: bool,
+) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
     cmd = [
         str(cli),
@@ -959,6 +990,10 @@ def run_msx1pq_cli(cli: Path, prepared_png: Path, output_dir: Path) -> Path:
         QUANTIZED_SUFFIX,
         "--force",
     ]
+    if distance is not None:
+        cmd.extend(["--distance", str(distance)])
+    if no_dither:
+        cmd.append("--no-dither")
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         raise SystemExit(
@@ -2705,7 +2740,13 @@ def main() -> None:
                         quantized_path = run_python_quantize(image, quantized_path)
                     else:
                         image.save(prepared_path)
-                        quantized_path = run_msx1pq_cli(msx1pq_cli, prepared_path, workdir)
+                        quantized_path = run_msx1pq_cli(
+                            msx1pq_cli,
+                            prepared_path,
+                            workdir,
+                            distance=args.msx1pq_cli_distance,
+                            no_dither=args.msx1pq_cli_no_dither,
+                        )
                         os.unlink(prepared_path)
 
                     image_data = load_quantized_image(
