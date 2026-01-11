@@ -1,10 +1,14 @@
-# Python Utilities
+# MSX PyUtils
+
+MSX PyUtils is a collection of Python-based tools and libraries designed to assist with various tasks related to the MSX computer platform.
+
+# Projects
+
+## 
+
+# Python requirements
 
 This directory hosts Python (3.11 or later) based tools for the project.
-
-# パイソンユーティリティ
-
-このディレクトリには Python（3.11以降）向けのツールやライブラリコードを配置します。
 
 
 # 依存関係のインストール
