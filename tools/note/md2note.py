@@ -77,7 +77,7 @@ def main():
     parser.add_argument(
         "--output_dir",
         type=Path,
-        default="docs/notes/",
+        default="docs/note/",
         help="Directory to save the converted Note files.",
     )
     args = parser.parse_args()
@@ -91,7 +91,8 @@ def main():
     converted = convert_markdown(content, md_path, docs_root, github_pages_root)
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / md_path.name
+    output_path = output_dir / (md_path.name + ".html")
+    print(f"Writing converted note to: {output_path}")
     output_path.write_text(converted, encoding="utf-8")
 
 

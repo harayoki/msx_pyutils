@@ -72,3 +72,4 @@ work/
 *.sc2
 *.bin
 
+docs/note/*.html
