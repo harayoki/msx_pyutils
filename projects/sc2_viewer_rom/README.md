@@ -1,16 +1,47 @@
-[sc2_viewer_32k_rom.py](src%2Fsc2_viewer_32k_rom.py)
-32kROMに2枚のSC2画像を表示するROMファイルを作成
+# SC2 Viewer ROM
 
-[sc2_viewer_megarom.py](src%2Fsc2_viewer_megarom.py)
-メガロムに250枚程度のSC2画像を表示するROMファイルを作成
+## スクリプト一覧
+- [`sc2_viewer_32k_rom.py`](src/sc2_viewer_32k_rom.py)
+  - 32kROMに2枚のSC2画像を表示するROMファイルを作成
+- [`sc2_viewer_megarom.py`](src/sc2_viewer_megarom.py)
+  - メガロムに約250枚のSC2画像を表示するROMファイルを作成
+- [`scroll_sc2_viewer_megarom.py`](src/scroll_sc2_viewer_megarom.py)
+  - メガロムに約250枚換算の縦長SC2画像を自動スクロール表示するROMファイルを作成
 
-[scroll_sc2_viewer_megarom.py](src%2Fscroll_sc2_viewer_megarom.py)
-メガロムに250枚換算程度の縦長SC2画像を自動スクロール表示するROMファイルを作成
+## 使い方
+- 通常は `scroll_sc2_viewer_megarom.py` を使用する。
+  - 高度な処理をしているため、動かない場合は `sc2_viewer_megarom.py` を使う。
+- メガロムではなく32kROM版が欲しい場合は `sc2_viewer_32k_rom.py` を使う。
 
-どう使うか
-通常はscroll_sc2_viewer_megarom.pyを使う、高度な事をしているので動かない場合は sc2_viewer_megarom.py を使う。
-メガロムではなく32kROM版が欲しい場合などは sc2_viewer_32k_rom.py を使う。
+## 動作確認
+- それぞれのROMファイルは OPENMSX と webMSX で動作確認済み。
+- 実機での動作は未確認。
 
-それぞれROMファイルはOPENMSXとwebMSXで動作確認しているが、実機では未確認。
+## BGMファイルについて
+- スクロールビューアーでは、VGMファイルを元にした「psgstream」形式の bin をテストで使用している。
+  - まだ開発中のため、仕様は今後変更される可能性がある。
 
+---
 
+# SC2 Viewer ROM (English)
+
+## Scripts
+- [`sc2_viewer_32k_rom.py`](src/sc2_viewer_32k_rom.py)
+  - Creates a ROM for displaying two SC2 images in a 32kROM.
+- [`sc2_viewer_megarom.py`](src/sc2_viewer_megarom.py)
+  - Creates a MegaROM for displaying around 250 SC2 images.
+- [`scroll_sc2_viewer_megarom.py`](src/scroll_sc2_viewer_megarom.py)
+  - Creates a MegaROM for auto-scrolling tall SC2 images (equivalent to around 250 images).
+
+## Usage
+- Use `scroll_sc2_viewer_megarom.py` by default.
+  - If it does not work due to the advanced processing, use `sc2_viewer_megarom.py`.
+- If you need a 32kROM version instead of a MegaROM, use `sc2_viewer_32k_rom.py`.
+
+## Tested
+- The ROMs have been tested on OPENMSX and webMSX.
+- Not tested on real hardware.
+
+## BGM files
+- The scroll viewer uses a test bin in the experimental "psgstream" format generated from VGM files.
+  - Since it is still under development, the specification may change in the future.
