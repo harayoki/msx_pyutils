@@ -1,0 +1,72 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Linker files
+*.ilk
+
+# Debugger Files
+*.pdb
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# debug information files
+*.dwo
+
+temp/
+Release/
+Debug/
+CLI_Release/
+CLI_Debug/
+dist/
+bin/
+*.rc
+*.res
+*.aex
+*.pluginY
+*.lnk
+*.zip
+venv
+
+__pycache__/
+*.pyc
+*.pyo
+
+_sdk_temp_/
+tests/msx1pq_outputs/
+tests/msx1pq_autogen_input.png
+nuitka-crash-report.xml
+work/
+~*
+*~
+*.rom
+*.sc2
+*.bin
+
