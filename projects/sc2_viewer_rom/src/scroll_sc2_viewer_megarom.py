@@ -207,8 +207,8 @@ class Messages:
     @_localized
     def debug_scene_help(cls) -> dict[str, str]:
         return {
-            "jp": "ESC でデバッグシーンを挟む（設定画面の前に表示）",
-            "en": "Insert debug scene on ESC before the settings screen.",
+            "jp": "SHIFT+D でデバッグシーンを開けるようにする",
+            "en": "Allow opening the debug scene with SHIFT+D.",
         }
 
     @_localized
@@ -758,6 +758,8 @@ QUANTIZED_SUFFIX = "_quantized"
 
 SCROLL_VIEWER_FUNC_GROUP = "scroll_viewer"
 DEBUG_SCENE_FUNC_GROUP = "scroll_viewer_debug_scene"
+KEYBOARD_ROW_ASDF = 2
+KEYBOARD_BIT_D = 2
 
 AUTO_ADVANCE_INTERVAL_FRAMES = [
     0,
@@ -1102,9 +1104,12 @@ def build_debug_scene_bank(
         input_hold_addr=ADDR.INPUT_HOLD,
         input_trg_addr=ADDR.INPUT_TRG,
         page_index_addr=ADDR.CURRENT_IMAGE_ADDR,
+        enter_key_matrix=(KEYBOARD_ROW_ASDF, KEYBOARD_BIT_D),
+        enter_key_shift_bit=INPUT_KEY_BIT.L_BTN_B,
+        exit_key_bit=INPUT_KEY_BIT.L_ESC,
         header_lines=[
             "<DEBUG>",
-            "ESC : OPEN SETTINGS",
+            "ESC : EXIT DEBUG",
         ],
         header_col=debug_label_col,
         label_col=debug_label_col,
@@ -2190,16 +2195,18 @@ def build_boot_bank(
     XOR.A(b)
     LD.mn16_A(b, ADDR.SKIP_AUTO_SCROLL)
 
-    # ESC は設定画面、SHIFT+ESC はデバッグシーンへ遷移
+    # ESC は設定画面
     LD.A_mn16(b, ADDR.INPUT_TRG)
     BIT.n8_A(b, INPUT_KEY_BIT.L_ESC)
-    JR_Z(b, "CHECK_UP")
+    JR_Z(b, "CHECK_DEBUG_SCENE")
+    CONFIG_SCENE_FUNC.call(b)
+    apply_viewer_screen_settings(b)
+    LD.A_mn16(b, ADDR.CURRENT_IMAGE_ADDR)
+    UPDATE_IMAGE_DISPLAY_FUNC.call(b)
+    JP(b, "MAIN_LOOP")
+
+    b.label("CHECK_DEBUG_SCENE")
     if use_debug_scene:
-        LD.A_mn16(b, ADDR.INPUT_HOLD)
-        BIT.n8_A(b, INPUT_KEY_BIT.L_BTN_B)
-        JR_Z(b, "OPEN_CONFIG")
-        XOR.A(b)
-        LD.mn16_A(b, ADDR.INPUT_TRG)
         LD.A_mn16(b, ADDR.CURRENT_PAGE2_BANK_ADDR)
         PUSH.AF(b)
         LD.A_n8(b, debug_scene_bank)
@@ -2209,12 +2216,6 @@ def build_boot_bank(
         POP.AF(b)
         LD.mn16_A(b, ADDR.CURRENT_PAGE2_BANK_ADDR)
         set_page2_bank(b)
-    b.label("OPEN_CONFIG")
-    CONFIG_SCENE_FUNC.call(b)
-    apply_viewer_screen_settings(b)
-    LD.A_mn16(b, ADDR.CURRENT_IMAGE_ADDR)
-    UPDATE_IMAGE_DISPLAY_FUNC.call(b)
-    JP(b, "MAIN_LOOP")
 
     b.label("CHECK_UP")
     # --- [メインループ内の上下入力処理をここから差し替え] ---

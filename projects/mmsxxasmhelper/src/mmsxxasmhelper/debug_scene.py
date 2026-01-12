@@ -48,6 +48,8 @@ __all__ = [
     "build_hex_value_render_func",
 ]
 
+SNSMAT = 0x0141
+
 
 @dataclass(frozen=True)
 class DebugValuePosition:
@@ -119,6 +121,9 @@ def build_screen0_debug_scene(
     input_hold_addr: int | None = None,
     input_trg_addr: int,
     page_index_addr: int | None = None,
+    enter_key_matrix: tuple[int, int] | None = None,
+    enter_key_shift_bit: int | None = None,
+    exit_key_bit: int = INPUT_KEY_BIT.L_ESC,
     group: str = DEFAULT_FUNC_GROUP_NAME,
     title_lines: Sequence[str] | None = None,
     title_row: int = 0,
@@ -135,6 +140,8 @@ def build_screen0_debug_scene(
 
     if not pages:
         raise ValueError("pages が空です")
+    if enter_key_shift_bit is not None and input_hold_addr is None:
+        raise ValueError("enter_key_shift_bit requires input_hold_addr")
 
     title_lines = title_lines or ["", "DEBUG INFO", ""]
     title_height = len(title_lines)
@@ -239,6 +246,19 @@ def build_screen0_debug_scene(
     )
 
     def debug_scene(block: Block) -> None:
+        label_skip_enter = None
+        if enter_key_matrix is not None:
+            label_skip_enter = unique_label("__DEBUG_SKIP_ENTER__")
+            enter_key_row, enter_key_bit = enter_key_matrix
+            LD.A_n8(block, enter_key_row)
+            CALL(block, SNSMAT)
+            BIT.n8_A(block, enter_key_bit)
+            JR_NZ(block, label_skip_enter)
+            if enter_key_shift_bit is not None:
+                LD.A_mn16(block, input_hold_addr)
+                BIT.n8_A(block, enter_key_shift_bit)
+                JR_Z(block, label_skip_enter)
+
         if page_index_addr is None:
             XOR.A(block)
         else:
@@ -262,7 +282,7 @@ def build_screen0_debug_scene(
             else:
                 CALL(block, update_input_addr)
             LD.A_mn16(block, input_hold_addr)
-            BIT.n8_A(block, INPUT_KEY_BIT.L_ESC)
+            BIT.n8_A(block, exit_key_bit)
             JR_NZ(block, LABEL_WAIT_RELEASE)
 
         LABEL_DEBUG_LOOP = unique_label("__DEBUG_LOOP__")
@@ -274,9 +294,12 @@ def build_screen0_debug_scene(
             CALL(block, update_input_addr)
 
         LD.A_mn16(block, input_trg_addr)
-        BIT.n8_A(block, INPUT_KEY_BIT.L_ESC)
+        BIT.n8_A(block, exit_key_bit)
         RET_NZ(block)
 
         JP(block, LABEL_DEBUG_LOOP)
+        if label_skip_enter is not None:
+            block.label(label_skip_enter)
+            RET(block)
 
     return Func("DEBUG_SCENE", debug_scene, group=group), [PAGE_TABLE_FUNC]
