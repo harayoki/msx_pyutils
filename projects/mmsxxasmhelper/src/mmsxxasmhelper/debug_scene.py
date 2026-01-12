@@ -9,6 +9,7 @@ from typing import Sequence
 
 from mmsxxasmhelper.core import (
     ADD,
+    AND,
     BIT,
     CALL,
     CP,
@@ -17,10 +18,15 @@ from mmsxxasmhelper.core import (
     INC,
     JP,
     JP_mHL,
+    JR,
     JR_C,
+    JR_NZ,
     LD,
+    NOP,
+    OUT,
     RET,
     RET_NZ,
+    SRL,
     XOR,
     Block,
     Func,
