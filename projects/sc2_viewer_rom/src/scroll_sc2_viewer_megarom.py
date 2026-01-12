@@ -2205,10 +2205,10 @@ def build_boot_bank(
     if use_debug_scene:
         LD.A_mn16(b, ADDR.INPUT_TRG)
         BIT.n8_A(b, INPUT_KEY_BIT.L_LEFT)
-        JR_Z(b, "CHECK_UP")
+        JP_Z(b, "CHECK_UP")
         LD.A_mn16(b, ADDR.INPUT_HOLD)
         BIT.n8_A(b, INPUT_KEY_BIT.L_BTN_B)
-        JR_Z(b, "CHECK_UP")
+        JP_Z(b, "CHECK_UP")
         JP(b, "ENTER_DEBUG_SCENE")
 
     b.label("ENTER_DEBUG_SCENE")
