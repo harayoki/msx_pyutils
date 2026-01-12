@@ -22,6 +22,7 @@ from mmsxxasmhelper.core import (
     JR,
     JR_C,
     JR_NZ,
+    DJNZ,
     LD,
     NOP,
     OUT,
@@ -300,6 +301,15 @@ def build_screen0_debug_scene(
                 CALL(block, update_input_addr)
             XOR.A(block)
             LD.mn16_A(block, input_trg_addr)
+            LD.B_n8(block, 2)
+            LABEL_COOLDOWN = unique_label("__DEBUG_COOLDOWN__")
+            block.label(LABEL_COOLDOWN)
+            HALT(block)
+            if update_input_addr is None:
+                update_input_func.call(block)
+            else:
+                CALL(block, update_input_addr)
+            DJNZ(block, LABEL_COOLDOWN)
 
         LABEL_DEBUG_LOOP = unique_label("__DEBUG_LOOP__")
         block.label(LABEL_DEBUG_LOOP)
