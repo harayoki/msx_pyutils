@@ -852,6 +852,12 @@ class ADDR:
         initial_value=bytes([1 if args.bgm and args.bgm_path is not None else 0]),
         description="BGMの有効/無効",
     )
+    DEBUG_SCENE_ACTIVE = madd(
+        "DEBUG_SCENE_ACTIVE",
+        1,
+        initial_value=bytes([0]),
+        description="デバッグシーン表示中フラグ",
+    )
     BGM_PTR_ADDR = madd(
         "BGM_PTR_ADDR", 2, description="BGMストリームの現在位置"
     )
@@ -2038,7 +2044,12 @@ def build_boot_bank(
             PUSH.HL(block)
             PUSH.IX(block)
             PUSH.IY(block)
+            LD.A_mn16(block, ADDR.DEBUG_SCENE_ACTIVE)
+            OR.A(block)
+            LABEL_SKIP_PSG = unique_label("SKIP_PSG_ISR")
+            JR_NZ(block, LABEL_SKIP_PSG)
             psg_isr_macro(block)
+            block.label(LABEL_SKIP_PSG)
             POP.IY(block)
             POP.IX(block)
             POP.HL(block)
@@ -2209,6 +2220,8 @@ def build_boot_bank(
         LD.A_mn16(b, ADDR.INPUT_HOLD)
         BIT.n8_A(b, INPUT_KEY_BIT.L_BTN_B)
         JR_Z(b, "CHECK_UP")
+        LD.A_n8(b, 1)
+        LD.mn16_A(b, ADDR.DEBUG_SCENE_ACTIVE)
         LD.A_mn16(b, ADDR.CURRENT_PAGE2_BANK_ADDR)
         PUSH.AF(b)
         LD.A_n8(b, debug_scene_bank)
@@ -2218,6 +2231,8 @@ def build_boot_bank(
         POP.AF(b)
         LD.mn16_A(b, ADDR.CURRENT_PAGE2_BANK_ADDR)
         set_page2_bank(b)
+        XOR.A(b)
+        LD.mn16_A(b, ADDR.DEBUG_SCENE_ACTIVE)
 
     b.label("CHECK_UP")
     # --- [メインループ内の上下入力処理をここから差し替え] ---
