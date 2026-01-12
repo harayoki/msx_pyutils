@@ -1040,7 +1040,7 @@ def build_image_data_from_image(image: Image.Image) -> ImageData:
         raise ValueError(f"Height must be 8x size, got {height}")
 
     palette_indices = \
-        [nearest_palette_index(rgb) for rgb in image.convert("RGB").getdata()]  # 左上から右へ走査
+        [nearest_palette_index(rgb) for rgb in image.convert("RGB").get_flattened_data()]  # 左上から右へ走査
     patterns: list[bytes] = []
     colors: list[bytes] = []
 
