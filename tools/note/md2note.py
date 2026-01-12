@@ -140,7 +140,7 @@ def main():
     parser.add_argument(
         "--output_dir",
         type=Path,
-        default="docs/note/",
+        default="docs/note/build/",
         help="Directory to save the converted Note files.",
     )
     args = parser.parse_args()
