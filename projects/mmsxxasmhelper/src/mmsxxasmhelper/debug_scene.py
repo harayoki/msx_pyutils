@@ -293,6 +293,14 @@ def build_screen0_debug_scene(
             BIT.n8_A(block, exit_key_bit)
             JR_NZ(block, LABEL_WAIT_RELEASE)
 
+        if input_trg_addr is not None:
+            if update_input_addr is None:
+                update_input_func.call(block)
+            else:
+                CALL(block, update_input_addr)
+            XOR.A(block)
+            LD.mn16_A(block, input_trg_addr)
+
         LABEL_DEBUG_LOOP = unique_label("__DEBUG_LOOP__")
         block.label(LABEL_DEBUG_LOOP)
         HALT(block)
