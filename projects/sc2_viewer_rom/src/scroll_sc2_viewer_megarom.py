@@ -131,13 +131,13 @@ from mmsxxasmhelper.msxutils import (
     write_text_with_cursor_macro,
     set_screen_display_macro,
     set_screen_display_status_flag_macro,
-    build_screen0_debug_scene,
     quantize_msx1_image_two_colors,
     parse_color,
     nearest_palette_index,
     append_webmsx_rom_type_suffix,
     WebMSXRomType,
 )
+from mmsxxasmhelper.debug_scene import build_screen0_debug_scene
 from mmsxxasmhelper.config_scene import (
     Screen0ConfigEntry,
     build_screen0_config_menu,
