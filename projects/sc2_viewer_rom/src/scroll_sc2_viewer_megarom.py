@@ -799,6 +799,7 @@ class ADDR:
     INPUT_HOLD = madd("INPUT_HOLD", 1, description="現在押されている全入力")
     INPUT_TRG = madd("INPUT_TRG", 1, description="今回新しく押された入力")
     SKIP_AUTO_SCROLL = madd("SKIP_AUTO_SCROLL", 1, description="手動スクロール時は自動スクロールを抑止")
+    SKIP_SCROLL_COUNTER = madd("SKIP_SCROLL_COUNTER", 1, description="SHIFTスクロールの残り回数")
     BEEP_CNT = madd("BEEP_CNT", 1, description="BEEPカウンタ")
     BEEP_ACTIVE = madd("BEEP_ACTIVE", 1 , description="BEEP状態")
     TITLE_SECONDS_REMAINING = madd(
@@ -2001,6 +2002,8 @@ def build_boot_bank(
     UPDATE_INPUT_FUNC.call(b)
     XOR.A(b)
     LD.mn16_A(b, ADDR.SKIP_AUTO_SCROLL)
+    XOR.A(b)
+    LD.mn16_A(b, ADDR.SKIP_SCROLL_COUNTER)
 
     # ESC でコンフィグ（ヘルプ）シーンへ遷移
     LD.A_mn16(b, ADDR.INPUT_TRG)
@@ -2029,21 +2032,9 @@ def build_boot_bank(
     BIT.n8_A(b, INPUT_KEY_BIT.L_BTN_B)
     JR_Z(b, "SCROLL_UP_SINGLE")
 
-    LD.HL_mn16(b, ADDR.CURRENT_SCROLL_ROW)
-    LD.A_H(b)
-    OR.L(b)
-    JR_Z(b, "CHECK_DOWN")
-
-    LD.BC_n16(b, scroll_skip)
-    OR.A(b)
-    SBC.HL_BC(b)
-    JR_NC(b, "SHIFT_UP_STORE")
-    LD.HL_n16(b, 0)
-
-    b.label("SHIFT_UP_STORE")
-    LD.mn16_HL(b, ADDR.CURRENT_SCROLL_ROW)
-    DRAW_SCROLL_VIEW_FUNC.call(b)
-    JP(b, "CHECK_AUTO_SCROLL")
+    LD.A_n8(b, scroll_skip)
+    LD.mn16_A(b, ADDR.SKIP_SCROLL_COUNTER)
+    JP(b, "SKIP_SCROLL_UP_LOOP")
 
     b.label("SCROLL_UP_SINGLE")
 
@@ -2079,38 +2070,9 @@ def build_boot_bank(
     BIT.n8_A(b, INPUT_KEY_BIT.L_BTN_B)
     JR_Z(b, "SCROLL_DOWN_SINGLE")
 
-    LD.HL_mn16(b, ADDR.CURRENT_IMAGE_ROW_COUNT_ADDR)
-    LD.BC_n16(b, 24)
-    OR.A(b)
-    SBC.HL_BC(b)  # HL = limit
-
-    LD.DE_mn16(b, ADDR.CURRENT_SCROLL_ROW)
-    PUSH.HL(b)
-    OR.A(b)
-    SBC.HL_DE(b)
-    POP.HL(b)
-    JP_Z(b, "CHECK_AUTO_SCROLL")  # 下限到達
-    JP_C(b, "CHECK_AUTO_SCROLL")
-
-    EX.DE_HL(b)  # HL = current, DE = limit
-    LD.BC_n16(b, scroll_skip)
-    ADD.HL_BC(b)
-
-    PUSH.HL(b)
-    OR.A(b)
-    SBC.HL_DE(b)
-    JR_C(b, "SHIFT_DOWN_USE_CANDIDATE")
-    POP.AF(b)  # 候補を破棄
-    EX.DE_HL(b)  # HL = limit
-    JR(b, "SHIFT_DOWN_STORE")
-
-    b.label("SHIFT_DOWN_USE_CANDIDATE")
-    POP.HL(b)
-
-    b.label("SHIFT_DOWN_STORE")
-    LD.mn16_HL(b, ADDR.CURRENT_SCROLL_ROW)
-    DRAW_SCROLL_VIEW_FUNC.call(b)
-    JP(b, "CHECK_AUTO_SCROLL")
+    LD.A_n8(b, scroll_skip)
+    LD.mn16_A(b, ADDR.SKIP_SCROLL_COUNTER)
+    JP(b, "SKIP_SCROLL_DOWN_LOOP")
 
     b.label("SCROLL_DOWN_SINGLE")
 
@@ -2183,7 +2145,85 @@ def build_boot_bank(
 
     b.label("SYNC_XFER_DONE")
 
-    JP(b, "CHECK_AUTO_PAGE")
+    JP(b, "CHECK_SKIP_SCROLL")
+
+    b.label("SKIP_SCROLL_UP_LOOP")
+    LD.A_mn16(b, ADDR.SKIP_SCROLL_COUNTER)
+    OR.A(b)
+    JP_Z(b, "CHECK_AUTO_SCROLL")
+
+    LD.HL_mn16(b, ADDR.CURRENT_SCROLL_ROW)
+    LD.A_H(b)
+    OR.L(b)
+    JR_Z(b, "SKIP_SCROLL_UP_DONE")
+
+    LD.A_mn16(b, ADDR.SKIP_SCROLL_COUNTER)
+    DEC.A(b)
+    LD.mn16_A(b, ADDR.SKIP_SCROLL_COUNTER)
+
+    DEC.HL(b)
+    LD.mn16_HL(b, ADDR.CURRENT_SCROLL_ROW)
+    XOR.A(b)
+    LD.mn16_A(b, ADDR.SCROLL_DIRECTION)
+    LD.mn16_HL(b, ADDR.TARGET_ROW)
+    JP(b, "DO_UPDATE_SCROLL")
+
+    b.label("SKIP_SCROLL_UP_DONE")
+    XOR.A(b)
+    LD.mn16_A(b, ADDR.SKIP_SCROLL_COUNTER)
+    JP(b, "CHECK_AUTO_SCROLL")
+
+    b.label("SKIP_SCROLL_DOWN_LOOP")
+    LD.A_mn16(b, ADDR.SKIP_SCROLL_COUNTER)
+    OR.A(b)
+    JP_Z(b, "CHECK_AUTO_SCROLL")
+
+    # 最大値 (総行数 - 24) チェック
+    LD.HL_mn16(b, ADDR.CURRENT_IMAGE_ROW_COUNT_ADDR)
+    LD.BC_n16(b, 24)
+    OR.A(b)
+    SBC.HL_BC(b)  # HL = limit
+
+    LD.DE_mn16(b, ADDR.CURRENT_SCROLL_ROW)
+    PUSH.HL(b)
+    OR.A(b)
+    SBC.HL_DE(b)
+    POP.HL(b)
+    JR_Z(b, "SKIP_SCROLL_DOWN_DONE")  # 下限到達
+    JR_C(b, "SKIP_SCROLL_DOWN_DONE")
+
+    LD.A_mn16(b, ADDR.SKIP_SCROLL_COUNTER)
+    DEC.A(b)
+    LD.mn16_A(b, ADDR.SKIP_SCROLL_COUNTER)
+
+    # 1行下へ移動
+    LD.HL_mn16(b, ADDR.CURRENT_SCROLL_ROW)
+    INC.HL(b)
+    LD.mn16_HL(b, ADDR.CURRENT_SCROLL_ROW)
+
+    LD.A_n8(b, 1)
+    LD.mn16_A(b, ADDR.SCROLL_DIRECTION)
+
+    # ターゲット行は「新しく入ってきた下端の行 (開始行 + 23)」
+    LD.BC_n16(b, 23)
+    ADD.HL_BC(b)
+    LD.mn16_HL(b, ADDR.TARGET_ROW)
+    JP(b, "DO_UPDATE_SCROLL")
+
+    b.label("SKIP_SCROLL_DOWN_DONE")
+    XOR.A(b)
+    LD.mn16_A(b, ADDR.SKIP_SCROLL_COUNTER)
+    JP(b, "CHECK_AUTO_SCROLL")
+
+    b.label("CHECK_SKIP_SCROLL")
+    LD.A_mn16(b, ADDR.SKIP_SCROLL_COUNTER)
+    OR.A(b)
+    JP_Z(b, "CHECK_AUTO_SCROLL")
+    HALT(b)  # スキップループ間のV-Sync待ち
+    LD.A_mn16(b, ADDR.SCROLL_DIRECTION)
+    OR.A(b)
+    JP_Z(b, "SKIP_SCROLL_UP_LOOP")
+    JP(b, "SKIP_SCROLL_DOWN_LOOP")
 
     # --- 自動スクロール判定 ---
     b.label("CHECK_AUTO_SCROLL")
