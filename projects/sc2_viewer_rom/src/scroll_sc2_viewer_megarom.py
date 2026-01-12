@@ -479,7 +479,7 @@ AUTO_ADVANCE_INTERVAL_CHOICES = ["NONE", "3min", "1min", "30s", "10s", " 5s", " 
 AUTO_ADVANCE_INTERVAL_KEYS = ["NONE", "3min", "1min", "30s", "10s", "5s", "3s", "1s", "MAX"]
 AUTO_SCROLL_LEVEL_CHOICES = ["NONE", "1", "2", "3", "4", "5", "6", "7", "8", "MAX"]
 AUTO_PAGE_EDGE_CHOICES = ["NO", "YES"]
-SCROLL_SKIP = 4
+SCROLL_SKIP_ = 8  #
 
 
 def _detect_language(argv: Sequence[str]) -> str:
@@ -645,7 +645,7 @@ def parse_args() -> argparse.Namespace:
         "--scroll-skip",
         type=int,
         choices=range(1, 13),
-        default=SCROLL_SKIP,
+        default=SCROLL_SKIP_,
         help=Messages.scroll_skip_help(),
     )
     parser.add_argument(
@@ -715,7 +715,6 @@ def parse_args() -> argparse.Namespace:
 
 
 args = parse_args()
-SCROLL_SKIP = args.scroll_skip
 
 PAGE_SIZE = 0x4000
 ROM_BASE = 0x4000
@@ -1793,6 +1792,7 @@ def build_boot_bank(
     bgm_enabled_default: bool,
     bgm_start_bank: int | None,
     bgm_fps: int,
+    scroll_skip:int,
     log_lines: List[str] | None = None,
     debug_build: bool = False,
 ) -> bytes:
@@ -2024,7 +2024,7 @@ def build_boot_bank(
     LD.A_n8(b, 0xFF)
     LD.mn16_A(b, ADDR.AUTO_SCROLL_DIR)
 
-    # SHIFT 押下時は SCROLL_SKIP 行スクロールして全体を再描画
+    # SHIFT 押下時は scroll_skip 行スクロールして全体を再描画
     LD.A_mn16(b, ADDR.INPUT_HOLD)
     BIT.n8_A(b, INPUT_KEY_BIT.L_BTN_B)
     JR_Z(b, "SCROLL_UP_SINGLE")
@@ -2034,7 +2034,7 @@ def build_boot_bank(
     OR.L(b)
     JR_Z(b, "CHECK_DOWN")
 
-    LD.BC_n16(b, SCROLL_SKIP)
+    LD.BC_n16(b, scroll_skip)
     OR.A(b)
     SBC.HL_BC(b)
     JR_NC(b, "SHIFT_UP_STORE")
@@ -2074,7 +2074,7 @@ def build_boot_bank(
     LD.A_n8(b, 1)
     LD.mn16_A(b, ADDR.AUTO_SCROLL_DIR)
 
-    # SHIFT 押下時は SCROLL_SKIP 行スクロールして全体を再描画
+    # SHIFT 押下時は scroll_skip 行スクロールして全体を再描画
     LD.A_mn16(b, ADDR.INPUT_HOLD)
     BIT.n8_A(b, INPUT_KEY_BIT.L_BTN_B)
     JR_Z(b, "SCROLL_DOWN_SINGLE")
@@ -2093,7 +2093,7 @@ def build_boot_bank(
     JP_C(b, "CHECK_AUTO_SCROLL")
 
     EX.DE_HL(b)  # HL = current, DE = limit
-    LD.BC_n16(b, SCROLL_SKIP)
+    LD.BC_n16(b, scroll_skip)
     ADD.HL_BC(b)
 
     PUSH.HL(b)
@@ -2553,6 +2553,7 @@ def build(
     bgm_enabled_default: bool = False,
     bgm_fps: int = 30,
     bgm_data: bytes | None = None,
+    scroll_skip:int = 8,
     log_lines: list[str] | None = None,
     debug_build: bool = False,
 ) -> bytes:
@@ -2673,6 +2674,7 @@ def build(
             bgm_enabled_default,
             bgm_start_bank,
             bgm_fps,
+            scroll_skip,
             log_lines,
             debug_build,
         )
@@ -2905,6 +2907,7 @@ def main() -> None:
         bgm_enabled_default=bgm_enabled_default,
         bgm_fps=args.bgm_fps,
         bgm_data=bgm_data,
+        scroll_skip=args.scroll_skip,
         log_lines=log_lines,
         debug_build=args.debug_build,
     )
