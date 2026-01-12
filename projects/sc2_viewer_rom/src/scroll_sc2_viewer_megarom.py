@@ -131,6 +131,7 @@ from mmsxxasmhelper.msxutils import (
     write_text_with_cursor_macro,
     set_screen_display_macro,
     set_screen_display_status_flag_macro,
+    build_screen0_debug_scene,
     quantize_msx1_image_two_colors,
     parse_color,
     nearest_palette_index,
@@ -196,6 +197,13 @@ class Messages:
         return {
             "jp": "--use-debug-image 時に埋め込む番号",
             "en": "Index to embed when --use-debug-image is enabled.",
+        }
+
+    @_localized
+    def debug_scene_help(cls) -> dict[str, str]:
+        return {
+            "jp": "ESC でデバッグシーンを挟む（設定画面の前に表示）",
+            "en": "Insert debug scene on ESC before the settings screen.",
         }
 
     @_localized
@@ -527,6 +535,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help=Messages.debug_image_index_help(),
+    )
+    parser.add_argument(
+        "--use-debug-scene",
+        action="store_true",
+        help=Messages.debug_scene_help(),
     )
     parser.add_argument(
         "-o",
@@ -1793,6 +1806,7 @@ def build_boot_bank(
     bgm_start_bank: int | None,
     bgm_fps: int,
     scroll_skip:int,
+    use_debug_scene: bool,
     log_lines: List[str] | None = None,
     debug_build: bool = False,
 ) -> bytes:
@@ -1900,6 +1914,33 @@ def build_boot_bank(
         group=SCROLL_VIEWER_FUNC_GROUP,
     )
 
+    DEBUG_SCENE_FUNC: Func | None = None
+    if use_debug_scene:
+        debug_pages: list[list[str]] = []
+        total_images = len(image_entries)
+        for idx, entry in enumerate(image_entries):
+            debug_pages.append(
+                [
+                    f"IMAGE {idx + 1:03}/{total_images:03}",
+                    f"START BANK : {entry.start_bank:02X}h",
+                    f"TILE ROWS  : {entry.tile_rows}",
+                    f"COLOR BANK : {entry.color_bank:02X}h",
+                    f"COLOR ADDR : {entry.color_address:04X}h",
+                ]
+            )
+        DEBUG_SCENE_FUNC, _ = build_screen0_debug_scene(
+            debug_pages,
+            update_input_func=UPDATE_INPUT_FUNC,
+            input_trg_addr=ADDR.INPUT_TRG,
+            page_index_addr=ADDR.CURRENT_IMAGE_ADDR,
+            header_lines=[
+                "<DEBUG>",
+                "ESC : OPEN SETTINGS",
+            ],
+            header_col=2,
+            group=SCROLL_VIEWER_FUNC_GROUP,
+        )
+
     config_table_dump = io.StringIO()
     dump_func_bytes_on_finalize(
         b,
@@ -2002,10 +2043,12 @@ def build_boot_bank(
     XOR.A(b)
     LD.mn16_A(b, ADDR.SKIP_AUTO_SCROLL)
 
-    # ESC でコンフィグ（ヘルプ）シーンへ遷移
+    # ESC でデバッグ／コンフィグ（ヘルプ）シーンへ遷移
     LD.A_mn16(b, ADDR.INPUT_TRG)
     BIT.n8_A(b, INPUT_KEY_BIT.L_ESC)
     JR_Z(b, "CHECK_UP")
+    if DEBUG_SCENE_FUNC is not None:
+        DEBUG_SCENE_FUNC.call(b)
     CONFIG_SCENE_FUNC.call(b)
     apply_viewer_screen_settings(b)
     LD.A_mn16(b, ADDR.CURRENT_IMAGE_ADDR)
@@ -2554,6 +2597,7 @@ def build(
     bgm_fps: int = 30,
     bgm_data: bytes | None = None,
     scroll_skip:int = 8,
+    use_debug_scene: bool = False,
     log_lines: list[str] | None = None,
     debug_build: bool = False,
 ) -> bytes:
@@ -2675,6 +2719,7 @@ def build(
             bgm_start_bank,
             bgm_fps,
             scroll_skip,
+            use_debug_scene,
             log_lines,
             debug_build,
         )
@@ -2908,6 +2953,7 @@ def main() -> None:
         bgm_fps=args.bgm_fps,
         bgm_data=bgm_data,
         scroll_skip=args.scroll_skip,
+        use_debug_scene=args.use_debug_scene,
         log_lines=log_lines,
         debug_build=args.debug_build,
     )
