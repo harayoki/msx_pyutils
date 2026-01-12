@@ -2213,6 +2213,8 @@ def build_boot_bank(
 
     b.label("ENTER_DEBUG_SCENE")
     if use_debug_scene:
+        XOR.A(b)
+        LD.mn16_A(b, ADDR.INPUT_TRG)
         LD.A_mn16(b, ADDR.CURRENT_PAGE2_BANK_ADDR)
         PUSH.AF(b)
         LD.A_n8(b, debug_scene_bank)
