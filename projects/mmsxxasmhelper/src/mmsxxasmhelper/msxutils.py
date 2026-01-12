@@ -781,6 +781,7 @@ def build_update_input_func(
         input_hold: int = 0xC100,
         input_trg: int = 0xC101,
         *,
+        extra_key: Literal["graph", "select", "ctrl", "stop", "code", "tab", "enter"] = "graph",
         group: str = DEFAULT_FUNC_GROUP_NAME,
 ) -> Func:
     SNSMAT = 0x0141
@@ -788,6 +789,18 @@ def build_update_input_func(
     CHGET = 0x009F
     GTSTCK = 0x00D5
     GTTRIG = 0x00D8
+    extra_key_map = {
+        "graph": (6, 2),
+        "select": (7, 5),
+        "ctrl": (6, 1),
+        "stop": (7, 4),
+        "code": (6, 4),
+        "tab": (7, 3),
+        "enter": (8, 7),
+    }
+    if extra_key not in extra_key_map:
+        raise ValueError(f"extra_key must be one of {', '.join(extra_key_map)}")
+    extra_key_row, extra_key_bit = extra_key_map[extra_key]
 
     def update_input(block: Block) -> None:
         # PUSH でレジスタ保護
@@ -938,14 +951,15 @@ def build_update_input_func(
         LD.IXL_A(block)
         block.label("_SKIP_SHIFT")
 
-        # GRAPH (Bit 2)       # Bit 2 が GRAPH です
-        LD.A_B(block)  # Bから読み込み直す
-        BIT.n8_A(block, 2)
-        JR_NZ(block, "_SKIP_GRAPH")
+        # EXTRA キー (設定に応じて切り替え)
+        LD.A_n8(block, extra_key_row)
+        CALL(block, SNSMAT)
+        BIT.n8_A(block, extra_key_bit)
+        JR_NZ(block, "_SKIP_EXTRA")
         LD.A_n8(block, 1 << INPUT_KEY_BIT.L_EXTRA)
         OR.IXL(block)
         LD.IXL_A(block)
-        block.label("_SKIP_GRAPH")
+        block.label("_SKIP_EXTRA")
 
         # ESC キー (キーボードバッファ)
         CALL(block, CHSNS)
