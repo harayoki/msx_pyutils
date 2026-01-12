@@ -18,6 +18,7 @@ from mmsxxasmhelper.core import (
     INC,
     JP,
     JP_mHL,
+    JR_Z,
     JR,
     JR_C,
     JR_NZ,
