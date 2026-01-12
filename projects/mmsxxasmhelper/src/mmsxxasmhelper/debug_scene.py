@@ -40,6 +40,7 @@ def build_screen0_debug_scene(
     pages: Sequence[Sequence[str]],
     *,
     update_input_func: Func,
+    update_input_addr: int | None = None,
     input_trg_addr: int,
     page_index_addr: int | None = None,
     group: str = DEFAULT_FUNC_GROUP_NAME,
@@ -52,6 +53,7 @@ def build_screen0_debug_scene(
     top_row: int = 4,
     label_col: int = 2,
     screen0_name_base: int = 0x0000,
+    render_hook_func: Func | None = None,
 ) -> tuple[Func, Sequence[Func]]:
     """SCREEN0 デバッグ画面を生成する。"""
 
@@ -172,11 +174,16 @@ def build_screen0_debug_scene(
             block.label(LABEL_PAGE_OK)
 
         DRAW_PAGE_DISPATCH.call(block)
+        if render_hook_func is not None:
+            render_hook_func.call(block)
 
         LABEL_DEBUG_LOOP = unique_label("__DEBUG_LOOP__")
         block.label(LABEL_DEBUG_LOOP)
         HALT(block)
-        update_input_func.call(block)
+        if update_input_addr is None:
+            update_input_func.call(block)
+        else:
+            CALL(block, update_input_addr)
 
         LD.A_mn16(block, input_trg_addr)
         BIT.n8_A(block, INPUT_KEY_BIT.L_ESC)
@@ -185,4 +192,3 @@ def build_screen0_debug_scene(
         JP(block, LABEL_DEBUG_LOOP)
 
     return Func("DEBUG_SCENE", debug_scene, group=group), [PAGE_TABLE_FUNC]
-
