@@ -332,6 +332,13 @@ class Messages:
         }
 
     @_localized
+    def scroll_skip_help(cls) -> dict[str, str]:
+        return {
+            "jp": "SHIFT+上下でスクロールするタイル行数 (1-12, default: 4)",
+            "en": "Tile rows to scroll with SHIFT+Up/Down (1-12, default: 4).",
+        }
+
+    @_localized
     def start_at_help(cls) -> dict[str, str]:
         return {
             "jp": "全画像の初期表示位置デフォルト (default: top)",
@@ -635,6 +642,13 @@ def parse_args() -> argparse.Namespace:
         help=Messages.auto_scroll_help(),
     )
     parser.add_argument(
+        "--scroll-skip",
+        type=int,
+        choices=range(1, 13),
+        default=SCROLL_SKIP,
+        help=Messages.scroll_skip_help(),
+    )
+    parser.add_argument(
         "--start-at",
         choices=["top", "bottom"],
         default="top",
@@ -701,6 +715,7 @@ def parse_args() -> argparse.Namespace:
 
 
 args = parse_args()
+SCROLL_SKIP = args.scroll_skip
 
 PAGE_SIZE = 0x4000
 ROM_BASE = 0x4000
