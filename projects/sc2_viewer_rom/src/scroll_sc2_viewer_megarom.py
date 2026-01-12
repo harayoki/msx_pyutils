@@ -2230,6 +2230,8 @@ def build_boot_bank(
     BIT.n8_A(b, INPUT_KEY_BIT.L_ESC)
     JR_Z(b, "CHECK_UP")
     if use_debug_scene:
+        XOR.A(b)
+        LD.mn16_A(b, ADDR.INPUT_TRG)
         LD.A_mn16(b, ADDR.CURRENT_PAGE2_BANK_ADDR)
         PUSH.AF(b)
         LD.A_n8(b, debug_scene_bank)
