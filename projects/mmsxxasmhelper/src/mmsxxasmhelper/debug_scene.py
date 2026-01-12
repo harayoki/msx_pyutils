@@ -186,33 +186,3 @@ def build_screen0_debug_scene(
 
     return Func("DEBUG_SCENE", debug_scene, group=group), [PAGE_TABLE_FUNC]
 
-
-"""
-使い方
-
-# ...初期化...
-    b.label("MAIN_LOOP")
-    HALT(block) # V-Sync待ち（これを入れないとキー判定が速すぎる）
-    UPDATE_INPUT_CALL.call(b)
-
-    # SPACE(BTN_A)が今押されたかチェック
-    LD.A_mn16(b, INPUT_TRG)
-    BIT.n8_A(b, L_BTN_A)
-    JR_Z(b, "MAIN_LOOP")
-
-    # スペースが押された時、SHIFT(BTN_B)が保持されているか？
-    LD.A_mn16(b, INPUT_HOLD)
-    BIT.n8_A(b, L_BTN_B)
-    JR_NZ(b, "PREV_IMAGE")
-
-    # --- NEXT ---
-    # (画像番号を加算して描画ルーチンへ)
-    # ...
-    JR(b, "MAIN_LOOP")
-
-    # --- PREV ---
-    # (画像番号を減算して描画ルーチンへ)
-    # ...
-    JR(b, "MAIN_LOOP")
-
-"""
