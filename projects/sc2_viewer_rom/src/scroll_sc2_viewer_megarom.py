@@ -1372,6 +1372,10 @@ SCROLL_CONFIGS = {
     "UP": [(0, 0), (8, 8), (16, 16)],  # VRAM上段にTARGET_ROW、下段に+16
     "DOWN": [(0, -16), (8, -8), (16, 0)],  # VRAM下段にTARGET_ROW、上段に-16
 }
+SCROLL_BLOCK_ORDER = {
+    "UP": (0, 1, 2),  # 必要なら (2, 1, 0) に変更して下→中→上へ
+    "DOWN": (0, 1, 2),  # 方向ごとに変更しやすいように分離
+}
 
 
 def build_sync_scroll_prepare_func(direction: str, *, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func:
@@ -1507,6 +1511,8 @@ def build_sync_scroll_prepare_func(direction: str, *, group: str = DEFAULT_FUNC_
 
 
 def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func:
+    nt_lut_label = unique_label(f"NAME_TABLE_512_LUT_{direction}")
+
     def sync_scroll_transfer(block: Block) -> None:
 
         if args.vdp_wait_for_pattern_gen == 1:
@@ -1521,8 +1527,35 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
 
         LD.C_n8(block, 0x98)
 
-        # 方向に応じたオフセットでループ
-        for buf_index, (line_idx, _img_adj) in enumerate(SCROLL_CONFIGS[direction]):
+        def emit_name_table_block(b: Block, buf_index: int) -> None:
+            if args.vdp_wait_for_name_table == 0 and buf_index != 0:
+                outi_nt_func = OUTI_256_FUNC
+            else:
+                outi_nt_func = OUTI_256_FUNC_NO_WAIT
+
+            PUSH.AF(b)
+            AND.n8(b, 0x07)
+            LD.L_A(b)
+            LD.H_n8(b, 0)
+            for _ in range(5):
+                ADD.HL_HL(b)
+            LD.DE_label(b, nt_lut_label)
+            ADD.HL_DE(b)
+            PUSH.HL(b)
+
+            LD.HL_n16(b, 0x1800 + (0x100 * buf_index))
+            set_vram_write_macro(b)
+            POP.HL(b)
+            outi_nt_func.call(b)
+            POP.AF(b)
+
+        # 方向に応じた表示順でループ
+        for buf_index in SCROLL_BLOCK_ORDER[direction]:
+            HALT(block)  # VBLANK待ち
+
+            # --- NT更新 (上/中/下ブロック) ---
+            emit_name_table_block(block, buf_index)
+
             # --- A: パターン(PG)転送 ---
             LD.DE_n16(block, ADDR.PG_BUFFER + (0x100 * buf_index))
             LD.HL_mn16(block, ADDR.SYNC_SCROLL_PG_VRAM_ADDRS + (2 * buf_index))
@@ -1538,6 +1571,11 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
             outi_ct_func.call(block)
 
         RET(block)
+
+        # --- 512バイト LUT ---
+        block.label(nt_lut_label)
+        lut_data = [i for i in range(256)] * 2
+        DB(block, *lut_data)
 
     return Func(f"SYNC_SCROLL_TRANSFER_{direction}", sync_scroll_transfer, no_auto_ret=True, group=group)
 
@@ -2051,21 +2089,19 @@ def build_boot_bank(
     b.label("SYNC_PREP_DONE")
     POP.HL(b)
 
-    LD.A_mHL(b)
-    HALT(b)  # ここでVBLANKを待つ
-    SCROLL_NAME_TABLE_FUNC_NOWAIT_SELECTED.call(b)  # VBLANK中はＶＤＰウェイトをなくせる
-
     # 2. 新しい行の PG/CT を転送  ADDR,TARGET_ROW に行番号が入っている
     LD.A_mn16(b, ADDR.SCROLL_DIRECTION)
     OR.A(b)
     JR_NZ(b, "DO_SYNC_XFER_DOWN")
 
     # 上スクロール用
+    LD.A_mHL(b)
     SYNC_SCROLL_UP_TRANSFER_FUNC.call(b)
     JR(b, "SYNC_XFER_DONE")
 
     b.label("DO_SYNC_XFER_DOWN")
     # 下スクロール用
+    LD.A_mHL(b)
     SYNC_SCROLL_DOWN_TRANSFER_FUNC.call(b)
 
     b.label("SYNC_XFER_DONE")
