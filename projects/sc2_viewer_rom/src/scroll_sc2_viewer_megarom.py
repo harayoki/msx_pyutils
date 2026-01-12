@@ -207,8 +207,8 @@ class Messages:
     @_localized
     def debug_scene_help(cls) -> dict[str, str]:
         return {
-            "jp": "SHIFT+D でデバッグシーンを開けるようにする",
-            "en": "Allow opening the debug scene with SHIFT+D.",
+            "jp": "GRAPH キーを押している間デバッグシーンを表示する",
+            "en": "Show the debug scene while holding the GRAPH key.",
         }
 
     @_localized
@@ -758,10 +758,6 @@ QUANTIZED_SUFFIX = "_quantized"
 
 SCROLL_VIEWER_FUNC_GROUP = "scroll_viewer"
 DEBUG_SCENE_FUNC_GROUP = "scroll_viewer_debug_scene"
-KEYBOARD_ROW_ASDF = 2
-KEYBOARD_BIT_D = 2
-KEYBOARD_ROW_SHIFT = 6
-KEYBOARD_BIT_SHIFT = 0
 
 AUTO_ADVANCE_INTERVAL_FRAMES = [
     0,
@@ -1106,12 +1102,12 @@ def build_debug_scene_bank(
         input_hold_addr=ADDR.INPUT_HOLD,
         input_trg_addr=ADDR.INPUT_TRG,
         page_index_addr=ADDR.CURRENT_IMAGE_ADDR,
-        enter_key_matrix=(KEYBOARD_ROW_ASDF, KEYBOARD_BIT_D),
-        enter_key_shift_matrix=(KEYBOARD_ROW_SHIFT, KEYBOARD_BIT_SHIFT),
-        exit_key_bit=INPUT_KEY_BIT.L_ESC,
+        enter_key_shift_bit=INPUT_KEY_BIT.L_EXTRA,
+        exit_key_bit=INPUT_KEY_BIT.L_EXTRA,
+        exit_on_release=True,
         header_lines=[
             "<DEBUG>",
-            "ESC : EXIT DEBUG",
+            "GRAPH : HOLD DEBUG",
         ],
         header_col=debug_label_col,
         label_col=debug_label_col,
@@ -1624,7 +1620,7 @@ def build_update_image_display_func(
 
 
 UPDATE_INPUT_FUNC = build_update_input_func(
-    ADDR.INPUT_HOLD, ADDR.INPUT_TRG, extra_key="tab", group=SCROLL_VIEWER_FUNC_GROUP
+    ADDR.INPUT_HOLD, ADDR.INPUT_TRG, extra_key="graph", group=SCROLL_VIEWER_FUNC_GROUP
 )
 
 BEEP_WRITE_FUNC, SIMPLE_BEEP_FUNC, UPDATE_BEEP_FUNC = build_beep_control_utils(
