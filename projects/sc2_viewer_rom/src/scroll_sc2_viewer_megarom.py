@@ -124,7 +124,6 @@ from mmsxxasmhelper.msxutils import (
     build_beep_control_utils,
     # build_set_vram_write_func,
     set_vram_write_macro,
-    VDP_DATA,
     build_scroll_name_table_func,
     build_scroll_name_table_func2,
     build_outi_repeat_func,
@@ -139,7 +138,11 @@ from mmsxxasmhelper.msxutils import (
     append_webmsx_rom_type_suffix,
     WebMSXRomType,
 )
-from mmsxxasmhelper.debug_scene import build_screen0_debug_scene
+from mmsxxasmhelper.debug_scene import (
+    DebugValuePosition,
+    build_hex_value_render_func,
+    build_screen0_debug_scene,
+)
 from mmsxxasmhelper.config_scene import (
     Screen0ConfigEntry,
     build_screen0_config_menu,
@@ -954,41 +957,6 @@ class ImageData:
     tile_rows: int
 
 
-@dataclass(frozen=True)
-class DebugValuePosition:
-    line_index: int
-    col: int
-    size: int
-    addr: int
-
-
-def emit_hex_nibble(block: Block) -> None:
-    label_digit = unique_label("__HEX_DIGIT__")
-    label_done = unique_label("__HEX_DONE__")
-    CP.n8(block, 10)
-    JR_C(block, label_digit)
-    ADD.A_n8(block, 0x37)
-    JR(block, label_done)
-    block.label(label_digit)
-    ADD.A_n8(block, 0x30)
-    block.label(label_done)
-    OUT(block, VDP_DATA)
-    NOP(block, 2)
-
-
-def emit_hex_byte(block: Block) -> None:
-    LD.B_A(block)
-    LD.A_B(block)
-    SRL.A(block)
-    SRL.A(block)
-    SRL.A(block)
-    SRL.A(block)
-    emit_hex_nibble(block)
-    LD.A_B(block)
-    AND.n8(block, 0x0F)
-    emit_hex_nibble(block)
-
-
 def build_scroll_debug_lines(label_col: int) -> tuple[list[str], list[DebugValuePosition]]:
     placeholder_re = re.compile(r"0{2,4}")
     value_lines: list[tuple[str, list[tuple[int, int]]]] = [
@@ -1071,6 +1039,14 @@ def build_scroll_debug_render_func(
     width: int,
     group: str,
 ) -> Func:
+    hex_render_func = build_hex_value_render_func(
+        positions,
+        top_row=top_row,
+        screen0_name_base=screen0_name_base,
+        width=width,
+        group=group,
+    )
+
     def render_values(block: Block) -> None:
         for line_index, line in enumerate(lines):
             write_text_with_cursor_macro(
@@ -1080,19 +1056,7 @@ def build_scroll_debug_render_func(
                 top_row + line_index,
                 name_table=screen0_name_base,
             )
-        for pos in positions:
-            address = screen0_name_base + (top_row + pos.line_index) * width + pos.col
-            LD.HL_n16(block, address & 0xFFFF)
-            set_vram_write_macro(block)
-            if pos.size == 1:
-                LD.A_mn16(block, pos.addr)
-                emit_hex_byte(block)
-            else:
-                LD.HL_mn16(block, pos.addr)
-                LD.A_H(block)
-                emit_hex_byte(block)
-                LD.A_L(block)
-                emit_hex_byte(block)
+        hex_render_func.call(block)
         RET(block)
 
     return Func("DEBUG_SCROLL_RENDER", render_values, group=group)

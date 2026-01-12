@@ -4,6 +4,7 @@ SCREEN0 デバッグ画面用ユーティリティ。
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Sequence
 
 from mmsxxasmhelper.core import (
@@ -29,11 +30,79 @@ from mmsxxasmhelper.msxutils import (
     INPUT_KEY_BIT,
     replace_screen0_yen_with_slash_macro,
     set_screen_colors_macro,
+    set_vram_write_macro,
+    VDP_DATA,
     write_text_with_cursor_macro,
 )
 from mmsxxasmhelper.utils import DEFAULT_FUNC_GROUP_NAME, unique_label
 
-__all__ = ["build_screen0_debug_scene"]
+__all__ = [
+    "DebugValuePosition",
+    "build_screen0_debug_scene",
+    "build_hex_value_render_func",
+]
+
+
+@dataclass(frozen=True)
+class DebugValuePosition:
+    line_index: int
+    col: int
+    size: int
+    addr: int
+
+
+def _emit_hex_nibble(block: Block) -> None:
+    label_digit = unique_label("__HEX_DIGIT__")
+    label_done = unique_label("__HEX_DONE__")
+    CP.n8(block, 10)
+    JR_C(block, label_digit)
+    ADD.A_n8(block, 0x37)
+    JR(block, label_done)
+    block.label(label_digit)
+    ADD.A_n8(block, 0x30)
+    block.label(label_done)
+    OUT(block, VDP_DATA)
+    NOP(block, 2)
+
+
+def _emit_hex_byte(block: Block) -> None:
+    LD.B_A(block)
+    LD.A_B(block)
+    SRL.A(block)
+    SRL.A(block)
+    SRL.A(block)
+    SRL.A(block)
+    _emit_hex_nibble(block)
+    LD.A_B(block)
+    AND.n8(block, 0x0F)
+    _emit_hex_nibble(block)
+
+
+def build_hex_value_render_func(
+    positions: Sequence[DebugValuePosition],
+    *,
+    top_row: int,
+    screen0_name_base: int,
+    width: int,
+    group: str,
+) -> Func:
+    def render_values(block: Block) -> None:
+        for pos in positions:
+            address = screen0_name_base + (top_row + pos.line_index) * width + pos.col
+            LD.HL_n16(block, address & 0xFFFF)
+            set_vram_write_macro(block)
+            if pos.size == 1:
+                LD.A_mn16(block, pos.addr)
+                _emit_hex_byte(block)
+            else:
+                LD.HL_mn16(block, pos.addr)
+                LD.A_H(block)
+                _emit_hex_byte(block)
+                LD.A_L(block)
+                _emit_hex_byte(block)
+        RET(block)
+
+    return Func("DEBUG_HEX_VALUE_RENDER", render_values, group=group)
 
 
 def build_screen0_debug_scene(
