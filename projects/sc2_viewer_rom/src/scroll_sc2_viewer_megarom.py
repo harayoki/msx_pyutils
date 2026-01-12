@@ -1135,6 +1135,7 @@ def build_debug_scene_bank(
         debug_pages,
         update_input_func=UPDATE_INPUT_FUNC,
         update_input_addr=update_input_addr,
+        input_hold_addr=ADDR.INPUT_HOLD,
         input_trg_addr=ADDR.INPUT_TRG,
         page_index_addr=ADDR.CURRENT_IMAGE_ADDR,
         header_lines=[

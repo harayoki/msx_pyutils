@@ -41,6 +41,7 @@ def build_screen0_debug_scene(
     *,
     update_input_func: Func,
     update_input_addr: int | None = None,
+    input_hold_addr: int | None = None,
     input_trg_addr: int,
     page_index_addr: int | None = None,
     group: str = DEFAULT_FUNC_GROUP_NAME,
@@ -176,6 +177,18 @@ def build_screen0_debug_scene(
         DRAW_PAGE_DISPATCH.call(block)
         if render_hook_func is not None:
             render_hook_func.call(block)
+
+        if input_hold_addr is not None:
+            LABEL_WAIT_RELEASE = unique_label("__DEBUG_WAIT_RELEASE__")
+            block.label(LABEL_WAIT_RELEASE)
+            HALT(block)
+            if update_input_addr is None:
+                update_input_func.call(block)
+            else:
+                CALL(block, update_input_addr)
+            LD.A_mn16(block, input_hold_addr)
+            BIT.n8_A(block, INPUT_KEY_BIT.L_ESC)
+            JR_NZ(block, LABEL_WAIT_RELEASE)
 
         LABEL_DEBUG_LOOP = unique_label("__DEBUG_LOOP__")
         block.label(LABEL_DEBUG_LOOP)
