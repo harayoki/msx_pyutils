@@ -745,6 +745,7 @@ class ADDR:
         "TITLE_COUNTDOWN_DIGITS", 3, description="タイトルの残り秒数文字列")
 
     SCROLL_DIRECTION = madd("SCROLL_DIRECTION", 1, description="スクロール方向 (1=下,255=上)")
+    NT_SCROLL_ROW_CACHE = madd("NT_SCROLL_ROW_CACHE", 1, description="同期スクロールの名前テーブル行キャッシュ")
 
     PG_BUFFER = madd("PG_BUFFER", 256 * 3, description="1行分PG(256B)×3行の作業バッファ")
     CT_BUFFER = madd("CT_BUFFER", 256 * 3, description="1行分CT(256B)×3行の作業バッファ")
@@ -1514,6 +1515,7 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
     nt_lut_label = unique_label(f"NAME_TABLE_512_LUT_{direction}")
 
     def sync_scroll_transfer(block: Block) -> None:
+        LD.mn16_A(block, ADDR.NT_SCROLL_ROW_CACHE)
 
         if args.vdp_wait_for_pattern_gen == 1:
             outi_pg_func = OUTI_256_FUNC_NO_WAIT
@@ -1554,6 +1556,7 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
             HALT(block)  # VBLANK待ち
 
             # --- NT更新 (上/中/下ブロック) ---
+            LD.A_mn16(block, ADDR.NT_SCROLL_ROW_CACHE)
             emit_name_table_block(block, buf_index)
 
             # --- A: パターン(PG)転送 ---
