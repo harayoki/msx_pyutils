@@ -795,6 +795,8 @@ AUTO_SCROLL_EDGE_WAIT_FRAMES = [
     30,
 ]
 H_TIMI_HOOK_ADDR = 0xFD9F
+CHSNS = 0x009C
+CHGET = 0x009F
 
 # 状況を保存するメモリアドレス
 mem_addr_allocator = MemAddrAllocator(WORK_RAM_BASE)
@@ -2215,6 +2217,13 @@ def build_boot_bank(
     if use_debug_scene:
         XOR.A(b)
         LD.mn16_A(b, ADDR.INPUT_TRG)
+        LD.mn16_A(b, ADDR.INPUT_HOLD)
+        b.label("DEBUG_SCENE_CLEAR_KBUF")
+        CALL(b, CHSNS)
+        JR_Z(b, "DEBUG_SCENE_CLEAR_KBUF_DONE")
+        CALL(b, CHGET)
+        JR(b, "DEBUG_SCENE_CLEAR_KBUF")
+        b.label("DEBUG_SCENE_CLEAR_KBUF_DONE")
         LD.A_mn16(b, ADDR.CURRENT_PAGE2_BANK_ADDR)
         PUSH.AF(b)
         LD.A_n8(b, debug_scene_bank)
