@@ -311,6 +311,27 @@ class Messages:
         }
 
     @_localized
+    def auto_page_help(cls) -> dict[str, str]:
+        return {
+            "jp": "起動時の自動ページ切り替え速度 (default: 10s)",
+            "en": "Startup auto page speed (default: 10s).",
+        }
+
+    @_localized
+    def auto_page_edge_help(cls) -> dict[str, str]:
+        return {
+            "jp": "自動ページ端で次画像に移るか (default: YES)",
+            "en": "Whether to advance images at auto page edges (default: YES).",
+        }
+
+    @_localized
+    def auto_scroll_help(cls) -> dict[str, str]:
+        return {
+            "jp": "起動時の自動スクロール速度 (default: 5)",
+            "en": "Startup auto scroll speed (default: 5).",
+        }
+
+    @_localized
     def start_at_help(cls) -> dict[str, str]:
         return {
             "jp": "全画像の初期表示位置デフォルト (default: top)",
@@ -445,6 +466,12 @@ class Messages:
             "jp": "ERROR! ROMファイルを書き込めませんでした: {exc}",
             "en": "ERROR! failed to write ROM file: {exc}",
         }
+
+
+AUTO_ADVANCE_INTERVAL_CHOICES = ["NONE", "3min", "1min", "30s", "10s", " 5s", " 3s", " 1s", "MAX"]
+AUTO_ADVANCE_INTERVAL_KEYS = ["NONE", "3min", "1min", "30s", "10s", "5s", "3s", "1s", "MAX"]
+AUTO_SCROLL_LEVEL_CHOICES = ["NONE", "1", "2", "3", "4", "5", "6", "7", "8", "MAX"]
+AUTO_PAGE_EDGE_CHOICES = ["NO", "YES"]
 
 
 def _detect_language(argv: Sequence[str]) -> str:
@@ -589,6 +616,24 @@ def parse_args() -> argparse.Namespace:
         help=Messages.bgm_fps_help(),
     )
     parser.add_argument(
+        "--auto-page",
+        choices=AUTO_ADVANCE_INTERVAL_KEYS,
+        default="10s",
+        help=Messages.auto_page_help(),
+    )
+    parser.add_argument(
+        "--auto-page-edge",
+        choices=AUTO_PAGE_EDGE_CHOICES,
+        default="YES",
+        help=Messages.auto_page_edge_help(),
+    )
+    parser.add_argument(
+        "--auto-scroll",
+        choices=AUTO_SCROLL_LEVEL_CHOICES,
+        default="5",
+        help=Messages.auto_scroll_help(),
+    )
+    parser.add_argument(
         "--start-at",
         choices=["top", "bottom"],
         default="top",
@@ -641,6 +686,12 @@ def parse_args() -> argparse.Namespace:
     args = parser.parse_args()
     if args.english:
         Messages.lang = "en"
+    auto_page_map = {value: index for index, value in enumerate(AUTO_ADVANCE_INTERVAL_KEYS)}
+    auto_page_edge_map = {value: index for index, value in enumerate(AUTO_PAGE_EDGE_CHOICES)}
+    auto_scroll_map = {value: index for index, value in enumerate(AUTO_SCROLL_LEVEL_CHOICES)}
+    args.auto_page = auto_page_map[args.auto_page]
+    args.auto_page_edge = auto_page_edge_map[args.auto_page_edge]
+    args.auto_scroll = auto_scroll_map[args.auto_scroll]
     vdp_wait_map = {"PARTIAL": 0, "NOWAIT": 1}
     args.vdp_wait_for_name_table = vdp_wait_map[args.vdp_wait_for_name_table]
     args.vdp_wait_for_pattern_gen = vdp_wait_map[args.vdp_wait_for_pattern_gen]
@@ -709,8 +760,6 @@ AUTO_SCROLL_EDGE_WAIT_FRAMES = [
     60,
     30,
 ]
-AUTO_ADVANCE_INTERVAL_CHOICES = ["NONE", "3min", "1min", "30s", "10s", " 5s", " 3s", " 1s", "MAX"]
-AUTO_SCROLL_LEVEL_CHOICES = ["NONE", "1", "2", "3", "4", "5", "6", "7", "8", "MAX"]
 H_TIMI_HOOK_ADDR = 0xFD9F
 
 # 状況を保存するメモリアドレス
@@ -785,10 +834,16 @@ class ADDR:
         "VGM_TIMER_FLAG", 1, initial_value=bytes([0]), description="VGM再生の1/2フレーム切り替えフラグ"
     )
     CONFIG_AUTO_SPEED = madd(
-        "CONFIG_AUTO_SPEED", 1, initial_value=bytes([5]), description="自動切り替え速度 (0-7)"
+        "CONFIG_AUTO_SPEED",
+        1,
+        initial_value=bytes([args.auto_page]),
+        description="自動切り替え速度 (0-7)",
     )
     CONFIG_AUTO_SCROLL = madd(
-        "CONFIG_AUTO_SCROLL", 1, initial_value=bytes([3]), description="自動スクロール速度 (0-9)"
+        "CONFIG_AUTO_SCROLL",
+        1,
+        initial_value=bytes([args.auto_scroll]),
+        description="自動スクロール速度 (0-9)",
     )
     # CONFIG_VDP_WAIT_NAME_TABLE = madd(
     #     "CONFIG_VDP_WAIT_NAME_TABLE",
@@ -809,7 +864,10 @@ class ADDR:
     #     description="VDP WAIT (color table) (0=PARTIAL,1=NOWAIT)",
     # )
     CONFIG_AUTO_PAGE_EDGE = madd(
-        "CONFIG_AUTO_PAGE_EDGE", 1, initial_value=bytes([1]), description="自動スクロール中のページ端遷移"
+        "CONFIG_AUTO_PAGE_EDGE",
+        1,
+        initial_value=bytes([args.auto_page_edge]),
+        description="自動スクロール中のページ端遷移",
     )
     AUTO_ADVANCE_COUNTER = madd(
         "AUTO_ADVANCE_COUNTER", 2, description="自動切り替えまでの残りフレーム"
