@@ -20,6 +20,7 @@ MSX1 SCREEN2 の縦スクロール ASCII16 MegaROM ビルダー。
   自動スクロール／自動ページ送り／BEEP／BGM／VDP wait は ESC で開く SCREEN 0 の
   設定メニューから切り替えられる。スペースで次の画像、GRAPHキーで前の画像に循環
   切り替えし、切り替え時に簡易 Beep を鳴らす。
+- `--use-debug-scene` 指定時は SHIFT+左 でデバッグシーンへ、ESC で戻る。
 - タイトル画面はカウントダウン付きで表示し、SPACE で開始、ESC で設定メニューへ遷移する。
 - `--use-debug-image` を指定するとテスト用パターンを生成し、それ以外ではビルド結果を
   ROM として出力、必要に応じてログを rominfo に書き出す。
@@ -207,8 +208,8 @@ class Messages:
     @_localized
     def debug_scene_help(cls) -> dict[str, str]:
         return {
-            "jp": "SHIFT+D でデバッグシーンを開けるようにする",
-            "en": "Allow opening the debug scene with SHIFT+D.",
+            "jp": "SHIFT+左 でデバッグシーンを開けるようにする",
+            "en": "Allow opening the debug scene with SHIFT+Left.",
         }
 
     @_localized
@@ -758,11 +759,6 @@ QUANTIZED_SUFFIX = "_quantized"
 
 SCROLL_VIEWER_FUNC_GROUP = "scroll_viewer"
 DEBUG_SCENE_FUNC_GROUP = "scroll_viewer_debug_scene"
-KEYBOARD_ROW_ASDF = 2
-KEYBOARD_BIT_D = 2
-KEYBOARD_ROW_SHIFT = 6
-KEYBOARD_BIT_SHIFT = 0
-
 AUTO_ADVANCE_INTERVAL_FRAMES = [
     0,
     180 * 60,
@@ -1106,8 +1102,6 @@ def build_debug_scene_bank(
         input_hold_addr=ADDR.INPUT_HOLD,
         input_trg_addr=ADDR.INPUT_TRG,
         page_index_addr=ADDR.CURRENT_IMAGE_ADDR,
-        enter_key_matrix=(KEYBOARD_ROW_ASDF, KEYBOARD_BIT_D),
-        enter_key_shift_matrix=(KEYBOARD_ROW_SHIFT, KEYBOARD_BIT_SHIFT),
         exit_key_bit=INPUT_KEY_BIT.L_ESC,
         header_lines=[
             "<DEBUG>",
@@ -2209,6 +2203,12 @@ def build_boot_bank(
 
     b.label("CHECK_DEBUG_SCENE")
     if use_debug_scene:
+        LD.A_mn16(b, ADDR.INPUT_TRG)
+        BIT.n8_A(b, INPUT_KEY_BIT.L_LEFT)
+        JR_Z(b, "CHECK_UP")
+        LD.A_mn16(b, ADDR.INPUT_HOLD)
+        BIT.n8_A(b, INPUT_KEY_BIT.L_BTN_B)
+        JR_Z(b, "CHECK_UP")
         LD.A_mn16(b, ADDR.CURRENT_PAGE2_BANK_ADDR)
         PUSH.AF(b)
         LD.A_n8(b, debug_scene_bank)
