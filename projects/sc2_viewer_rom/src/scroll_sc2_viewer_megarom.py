@@ -472,6 +472,7 @@ AUTO_ADVANCE_INTERVAL_CHOICES = ["NONE", "3min", "1min", "30s", "10s", " 5s", " 
 AUTO_ADVANCE_INTERVAL_KEYS = ["NONE", "3min", "1min", "30s", "10s", "5s", "3s", "1s", "MAX"]
 AUTO_SCROLL_LEVEL_CHOICES = ["NONE", "1", "2", "3", "4", "5", "6", "7", "8", "MAX"]
 AUTO_PAGE_EDGE_CHOICES = ["NO", "YES"]
+SCROLL_SKIP = 4
 
 
 def _detect_language(argv: Sequence[str]) -> str:
@@ -2008,7 +2009,7 @@ def build_boot_bank(
     LD.A_n8(b, 0xFF)
     LD.mn16_A(b, ADDR.AUTO_SCROLL_DIR)
 
-    # SHIFT 押下時は 8 行スクロールして全体を再描画
+    # SHIFT 押下時は SCROLL_SKIP 行スクロールして全体を再描画
     LD.A_mn16(b, ADDR.INPUT_HOLD)
     BIT.n8_A(b, INPUT_KEY_BIT.L_BTN_B)
     JR_Z(b, "SCROLL_UP_SINGLE")
@@ -2018,7 +2019,7 @@ def build_boot_bank(
     OR.L(b)
     JR_Z(b, "CHECK_DOWN")
 
-    LD.BC_n16(b, 4)
+    LD.BC_n16(b, SCROLL_SKIP)
     OR.A(b)
     SBC.HL_BC(b)
     JR_NC(b, "SHIFT_UP_STORE")
@@ -2058,7 +2059,7 @@ def build_boot_bank(
     LD.A_n8(b, 1)
     LD.mn16_A(b, ADDR.AUTO_SCROLL_DIR)
 
-    # SHIFT 押下時は 8 行スクロールして全体を再描画
+    # SHIFT 押下時は SCROLL_SKIP 行スクロールして全体を再描画
     LD.A_mn16(b, ADDR.INPUT_HOLD)
     BIT.n8_A(b, INPUT_KEY_BIT.L_BTN_B)
     JR_Z(b, "SCROLL_DOWN_SINGLE")
@@ -2077,7 +2078,7 @@ def build_boot_bank(
     JP_C(b, "CHECK_AUTO_SCROLL")
 
     EX.DE_HL(b)  # HL = current, DE = limit
-    LD.BC_n16(b, 4)
+    LD.BC_n16(b, SCROLL_SKIP)
     ADD.HL_BC(b)
 
     PUSH.HL(b)
