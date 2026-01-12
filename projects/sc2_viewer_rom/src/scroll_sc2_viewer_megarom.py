@@ -785,7 +785,7 @@ class ADDR:
         "VGM_TIMER_FLAG", 1, initial_value=bytes([0]), description="VGM再生の1/2フレーム切り替えフラグ"
     )
     CONFIG_AUTO_SPEED = madd(
-        "CONFIG_AUTO_SPEED", 1, initial_value=bytes([4]), description="自動切り替え速度 (0-7)"
+        "CONFIG_AUTO_SPEED", 1, initial_value=bytes([5]), description="自動切り替え速度 (0-7)"
     )
     CONFIG_AUTO_SCROLL = madd(
         "CONFIG_AUTO_SCROLL", 1, initial_value=bytes([3]), description="自動スクロール速度 (0-9)"
@@ -1361,7 +1361,7 @@ def build_update_image_display_func(
 
 
 UPDATE_INPUT_FUNC = build_update_input_func(
-    ADDR.INPUT_HOLD, ADDR.INPUT_TRG, group=SCROLL_VIEWER_FUNC_GROUP
+    ADDR.INPUT_HOLD, ADDR.INPUT_TRG, extra_key="tab", group=SCROLL_VIEWER_FUNC_GROUP
 )
 
 BEEP_WRITE_FUNC, SIMPLE_BEEP_FUNC, UPDATE_BEEP_FUNC = build_beep_control_utils(
