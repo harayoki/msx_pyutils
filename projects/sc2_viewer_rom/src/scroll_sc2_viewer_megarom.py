@@ -760,6 +760,8 @@ SCROLL_VIEWER_FUNC_GROUP = "scroll_viewer"
 DEBUG_SCENE_FUNC_GROUP = "scroll_viewer_debug_scene"
 KEYBOARD_ROW_ASDF = 2
 KEYBOARD_BIT_D = 2
+KEYBOARD_ROW_SHIFT = 6
+KEYBOARD_BIT_SHIFT = 0
 
 AUTO_ADVANCE_INTERVAL_FRAMES = [
     0,
@@ -1105,7 +1107,7 @@ def build_debug_scene_bank(
         input_trg_addr=ADDR.INPUT_TRG,
         page_index_addr=ADDR.CURRENT_IMAGE_ADDR,
         enter_key_matrix=(KEYBOARD_ROW_ASDF, KEYBOARD_BIT_D),
-        enter_key_shift_bit=INPUT_KEY_BIT.L_BTN_B,
+        enter_key_shift_matrix=(KEYBOARD_ROW_SHIFT, KEYBOARD_BIT_SHIFT),
         exit_key_bit=INPUT_KEY_BIT.L_ESC,
         header_lines=[
             "<DEBUG>",

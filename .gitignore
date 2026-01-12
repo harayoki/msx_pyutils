@@ -60,6 +60,8 @@ __pycache__/
 *.pyc
 *.pyo
 
+.DS_Store
+.idea
 
 _sdk_temp_/
 tests/msx1pq_outputs/

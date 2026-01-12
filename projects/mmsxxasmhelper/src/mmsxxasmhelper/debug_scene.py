@@ -123,6 +123,7 @@ def build_screen0_debug_scene(
     input_trg_addr: int,
     page_index_addr: int | None = None,
     enter_key_matrix: tuple[int, int] | None = None,
+    enter_key_shift_matrix: tuple[int, int] | None = None,
     enter_key_shift_bit: int | None = None,
     exit_key_bit: int = INPUT_KEY_BIT.L_ESC,
     group: str = DEFAULT_FUNC_GROUP_NAME,
@@ -255,6 +256,12 @@ def build_screen0_debug_scene(
             CALL(block, SNSMAT)
             BIT.n8_A(block, enter_key_bit)
             JR_NZ(block, label_skip_enter)
+            if enter_key_shift_matrix is not None:
+                shift_row, shift_bit = enter_key_shift_matrix
+                LD.A_n8(block, shift_row)
+                CALL(block, SNSMAT)
+                BIT.n8_A(block, shift_bit)
+                JR_NZ(block, label_skip_enter)
             if enter_key_shift_bit is not None:
                 LD.A_mn16(block, input_hold_addr)
                 BIT.n8_A(block, enter_key_shift_bit)
