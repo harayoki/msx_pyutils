@@ -319,7 +319,10 @@ def build_screen0_debug_scene(
         else:
             CALL(block, update_input_addr)
 
-        LD.A_mn16(block, input_trg_addr)
+        if input_hold_addr is not None:
+            LD.A_mn16(block, input_hold_addr)
+        else:
+            LD.A_mn16(block, input_trg_addr)
         BIT.n8_A(block, exit_key_bit)
         RET_NZ(block)
 
