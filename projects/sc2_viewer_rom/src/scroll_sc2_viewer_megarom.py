@@ -2190,11 +2190,14 @@ def build_boot_bank(
     XOR.A(b)
     LD.mn16_A(b, ADDR.SKIP_AUTO_SCROLL)
 
-    # ESC でデバッグ／コンフィグ（ヘルプ）シーンへ遷移
+    # ESC は設定画面、SHIFT+ESC はデバッグシーンへ遷移
     LD.A_mn16(b, ADDR.INPUT_TRG)
     BIT.n8_A(b, INPUT_KEY_BIT.L_ESC)
     JR_Z(b, "CHECK_UP")
     if use_debug_scene:
+        LD.A_mn16(b, ADDR.INPUT_HOLD)
+        BIT.n8_A(b, INPUT_KEY_BIT.L_BTN_B)
+        JR_Z(b, "OPEN_CONFIG")
         XOR.A(b)
         LD.mn16_A(b, ADDR.INPUT_TRG)
         LD.A_mn16(b, ADDR.CURRENT_PAGE2_BANK_ADDR)
@@ -2206,6 +2209,7 @@ def build_boot_bank(
         POP.AF(b)
         LD.mn16_A(b, ADDR.CURRENT_PAGE2_BANK_ADDR)
         set_page2_bank(b)
+    b.label("OPEN_CONFIG")
     CONFIG_SCENE_FUNC.call(b)
     apply_viewer_screen_settings(b)
     LD.A_mn16(b, ADDR.CURRENT_IMAGE_ADDR)
