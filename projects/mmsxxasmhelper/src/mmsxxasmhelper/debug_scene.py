@@ -15,6 +15,7 @@ from mmsxxasmhelper.core import (
     HALT,
     INC,
     JP,
+    JP_mHL,
     JR_C,
     LD,
     RET,
