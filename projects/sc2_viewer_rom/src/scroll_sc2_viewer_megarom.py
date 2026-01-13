@@ -868,24 +868,24 @@ class ADDR:
         initial_value=bytes([args.auto_scroll]),
         description="自動スクロール速度 (0-9)",
     )
-    # CONFIG_VDP_WAIT_NAME_TABLE = madd(
-    #     "CONFIG_VDP_WAIT_NAME_TABLE",
-    #     1,
-    #     initial_value=bytes([args.vdp_wait_for_name_table]),
-    #     description="VDP WAIT (name table) (0=PARTIAL,1=NOWAIT)",
-    # )
-    # CONFIG_VDP_WAIT_PATTERN_GEN = madd(
-    #     "CONFIG_VDP_WAIT_PATTERN_GEN",
-    #     1,
-    #     initial_value=bytes([args.vdp_wait_for_pattern_gen]),
-    #     description="VDP WAIT (pattern gen) (0=PARTIAL,1=NOWAIT)",
-    # )
-    # CONFIG_VDP_WAIT_COLOR_TABLE = madd(
-    #     "CONFIG_VDP_WAIT_COLOR_TABLE",
-    #     1,
-    #     initial_value=bytes([args.vdp_wait_for_color_table]),
-    #     description="VDP WAIT (color table) (0=PARTIAL,1=NOWAIT)",
-    # )
+    CONFIG_VDP_WAIT_NAME_TABLE = madd(
+        "CONFIG_VDP_WAIT_NAME_TABLE",
+        1,
+        initial_value=bytes([args.vdp_wait_for_name_table]),
+        description="VDP WAIT (name table) (0=PARTIAL,1=NOWAIT)",
+    )
+    CONFIG_VDP_WAIT_PATTERN_GEN = madd(
+        "CONFIG_VDP_WAIT_PATTERN_GEN",
+        1,
+        initial_value=bytes([args.vdp_wait_for_pattern_gen]),
+        description="VDP WAIT (pattern gen) (0=PARTIAL,1=NOWAIT)",
+    )
+    CONFIG_VDP_WAIT_COLOR_TABLE = madd(
+        "CONFIG_VDP_WAIT_COLOR_TABLE",
+        1,
+        initial_value=bytes([args.vdp_wait_for_color_table]),
+        description="VDP WAIT (color table) (0=PARTIAL,1=NOWAIT)",
+    )
     CONFIG_AUTO_PAGE_EDGE = madd(
         "CONFIG_AUTO_PAGE_EDGE",
         1,
@@ -1871,21 +1871,21 @@ def build_config_scene_func(
             AUTO_SCROLL_LEVEL_CHOICES,
             ADDR.CONFIG_AUTO_SCROLL,
         ),
-        # Screen0ConfigEntry(
-        #     "NTWAIT",
-        #     ["YES", "NO "],
-        #     ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
-        # ),
-        # Screen0ConfigEntry(
-        #     "PGWAIT",
-        #     ["YES", "NO "],
-        #     ADDR.CONFIG_VDP_WAIT_PATTERN_GEN,
-        # ),
-        # Screen0ConfigEntry(
-        #     "CTWAIT",
-        #     ["YES", "NO "],
-        #     ADDR.CONFIG_VDP_WAIT_COLOR_TABLE,
-        # ),
+        Screen0ConfigEntry(
+            "WVN",
+            ["YES", "NO "],
+            ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
+        ),
+        Screen0ConfigEntry(
+            "WVP",
+            ["YES", "NO "],
+            ADDR.CONFIG_VDP_WAIT_PATTERN_GEN,
+        ),
+        Screen0ConfigEntry(
+            "WVC",
+            ["YES", "NO "],
+            ADDR.CONFIG_VDP_WAIT_COLOR_TABLE,
+        ),
     ]
 
     init_func, loop_func, table_funcs = build_screen0_config_menu(
