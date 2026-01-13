@@ -1332,6 +1332,7 @@ def build_scroll_vram_xfer_func(with_wait: bool = True, group: str = DEFAULT_FUN
         # BC: (内部で使用) CはVDPポート, Bは256byteループ用
 
         # ※ 事前に VRAM アドレスセットは完了していること
+        DI(block)
 
         block.label("VRAM_PAGE_LOOP")
         PUSH.DE(block)  # 行数(D) と バンク番号(E) を保存
@@ -1371,6 +1372,7 @@ def build_scroll_vram_xfer_func(with_wait: bool = True, group: str = DEFAULT_FUN
         POP.DE(block)  # 行数(D) と バンク(E) を復帰
         DEC.D(block)  # 行数カウンタを減らす
         JP_NZ(block, "VRAM_PAGE_LOOP")
+        EI(block)
 
     func_name = "scroll_vram_xfer" if with_wait else "sscroll_vram_xfer_no_wait"
     return Func(func_name, scroll_vram_xfer, group=group)
@@ -1804,6 +1806,7 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
         # 方向に応じた表示順でループ
         for buf_index in SCROLL_BLOCK_ORDER[direction]:
             HALT(block)  # VBLANK待ち
+            DI(block)
 
             # --- NT更新 (上/中/下ブロック) ---
             LD.A_mn16(block, ADDR.NT_SCROLL_ROW_CACHE)
@@ -1822,6 +1825,7 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
             set_vram_write_macro(block)
             EX.DE_HL(block)
             outi_ct_func.call(block)
+            EI(block)
 
         RET(block)
 
