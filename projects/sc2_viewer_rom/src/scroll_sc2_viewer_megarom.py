@@ -872,19 +872,19 @@ class ADDR:
         "CONFIG_VDP_WAIT_NAME_TABLE",
         1,
         initial_value=bytes([args.vdp_wait_for_name_table]),
-        description="VDP WAIT (name table) (0=PARTIAL,1=NOWAIT)",
+        description="VDP NT: WAIT / NOWAIT",
     )
     CONFIG_VDP_WAIT_PATTERN_GEN = madd(
         "CONFIG_VDP_WAIT_PATTERN_GEN",
         1,
         initial_value=bytes([args.vdp_wait_for_pattern_gen]),
-        description="VDP WAIT (pattern gen) (0=PARTIAL,1=NOWAIT)",
+        description="VDP PG: WAIT / NOWAIT",
     )
     CONFIG_VDP_WAIT_COLOR_TABLE = madd(
         "CONFIG_VDP_WAIT_COLOR_TABLE",
         1,
         initial_value=bytes([args.vdp_wait_for_color_table]),
-        description="VDP WAIT (color table) (0=PARTIAL,1=NOWAIT)",
+        description="VDP CT: WAIT / NOWAIT",
     )
     CONFIG_AUTO_PAGE_EDGE = madd(
         "CONFIG_AUTO_PAGE_EDGE",
@@ -1872,18 +1872,18 @@ def build_config_scene_func(
             ADDR.CONFIG_AUTO_SCROLL,
         ),
         Screen0ConfigEntry(
-            "WVN",
-            ["YES", "NO "],
+            "VDP NT",
+            ["WAIT  ", "NOWAIT"],
             ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
         ),
         Screen0ConfigEntry(
-            "WVP",
-            ["YES", "NO "],
+            "VDP PG",
+            ["WAIT  ", "NOWAIT"],
             ADDR.CONFIG_VDP_WAIT_PATTERN_GEN,
         ),
         Screen0ConfigEntry(
-            "WVC",
-            ["YES", "NO "],
+            "VDP CT",
+            ["WAIT  ", "NOWAIT"],
             ADDR.CONFIG_VDP_WAIT_COLOR_TABLE,
         ),
     ]
