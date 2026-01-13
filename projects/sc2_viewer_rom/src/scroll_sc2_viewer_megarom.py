@@ -1335,7 +1335,11 @@ def build_scroll_vram_xfer_func(with_wait: bool = True, group: str = DEFAULT_FUN
         # ※ 事前に VRAM アドレスセットは完了していること
         DI(block)
 
-        block.label("VRAM_PAGE_LOOP")
+        vram_page_loop = unique_label("VRAM_PAGE_LOOP")
+        vram_byte_loop = unique_label("VRAM_BYTE_LOOP")
+        not_next_bank = unique_label("NOT_NEXT_BANK")
+
+        block.label(vram_page_loop)
         PUSH.DE(block)  # 行数(D) と バンク番号(E) を保存
 
         # 現在のバンクをメガROMにセット (Eレジスタの値を使用)
@@ -1347,7 +1351,7 @@ def build_scroll_vram_xfer_func(with_wait: bool = True, group: str = DEFAULT_FUN
 
         # --- 1ページ(256byte) 転送ループ (64展開版) ---
         # OUTI_256はバンクが一緒なので使えない RAMコピーするとむしろ重くなる
-        block.label("VRAM_BYTE_LOOP")
+        block.label(vram_byte_loop)
         for _ in range(32):  # 16でもいいが32のほうが2%くらいはやい
             # 1バイト転送 (18T)
             OUTI(block)  # (HL)->(C), HL++, B--
@@ -1355,12 +1359,12 @@ def build_scroll_vram_xfer_func(with_wait: bool = True, group: str = DEFAULT_FUN
             if with_wait:
                 # JR_n8(block, 0)  # ウェイト (12T)　3マイクロ秒強稼ぐ
                 NOP(block, 2)  # 4*2=8T ウェイトの場合 これでも動くが危険？
-        JP_NZ(block, "VRAM_BYTE_LOOP")
+        JP_NZ(block, vram_byte_loop)
 
         # --- バンク境界チェック ---
         LD.A_H(block)
         CP.n8(block, 0xC0)  # HLが0xC000（バンク端）に達したか？
-        JR_C(block, "NOT_NEXT_BANK")
+        JR_C(block, not_next_bank)
 
         # --- バンク跨ぎ発生時の処理 ---
         POP.DE(block)  # 一時復帰してバンク番号(E)を取り出す
@@ -1369,10 +1373,10 @@ def build_scroll_vram_xfer_func(with_wait: bool = True, group: str = DEFAULT_FUN
         LD.H_n8(block, 0x80)  # アドレスを 0x8000 に戻す
         # 次のループの先頭で LD A,E / LD (0x7000),A が実行される
 
-        block.label("NOT_NEXT_BANK")
+        block.label(not_next_bank)
         POP.DE(block)  # 行数(D) と バンク(E) を復帰
         DEC.D(block)  # 行数カウンタを減らす
-        JP_NZ(block, "VRAM_PAGE_LOOP")
+        JP_NZ(block, vram_page_loop)
         EI(block)
 
     func_name = "scroll_vram_xfer" if with_wait else "sscroll_vram_xfer_no_wait"
