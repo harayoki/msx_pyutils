@@ -16,7 +16,7 @@ MSX1 SCREEN2 の縦スクロール ASCII16 MegaROM ビルダー。
   （開始バンク、行数、初期表示位置(top/bottom)、カラーデータのバンクとアドレス）を並べ、
   末尾に 0xFF × 4 の終端情報を付与する。
 - ビューアーは SCREEN 2 を初期化し、画像ヘッダーに基づいた初期表示位置から開始する。
-  上下キーで 1 タイル行(8px)スクロールし、SHIFT+上下で 4 タイル行スクロールする。
+  上下キーで 1 タイル行(8px)スクロールし、SHIFT+上下で 8 タイル行単位の位置/端へ移動する。
   自動スクロール／自動ページ送り／BEEP／BGM／VDP wait は ESC で開く SCREEN 0 の
   設定メニューから切り替えられる。スペースで次の画像、GRAPHキーで前の画像に循環
   切り替えし、切り替え時に簡易 Beep を鳴らす。
@@ -346,13 +346,6 @@ class Messages:
         }
 
     @_localized
-    def scroll_skip_help(cls) -> dict[str, str]:
-        return {
-            "jp": "SHIFT+上下でスクロールするタイル行数 (1-12, default: 4)",
-            "en": "Tile rows to scroll with SHIFT+Up/Down (1-12, default: 4).",
-        }
-
-    @_localized
     def start_at_help(cls) -> dict[str, str]:
         return {
             "jp": "全画像の初期表示位置デフォルト (default: top)",
@@ -660,13 +653,7 @@ def parse_args() -> argparse.Namespace:
         default="5",
         help=Messages.auto_scroll_help(),
     )
-    parser.add_argument(
-        "--scroll-skip",
-        type=int,
-        choices=range(1, 13),
-        default=SCROLL_SKIP_,
-        help=Messages.scroll_skip_help(),
-    )
+    # --scroll-skip option is intentionally disabled (fixed to SCROLL_SKIP_).
     parser.add_argument(
         "--start-at",
         choices=["top", "bottom"],
@@ -2254,7 +2241,7 @@ def build_boot_bank(
     LD.A_n8(b, 0xFF)
     LD.mn16_A(b, ADDR.AUTO_SCROLL_DIR)
 
-    # SHIFT 押下時は scroll_skip 行スクロールして全体を再描画
+    # SHIFT 押下時は 8 行単位/端までスクロールして全体を再描画
     LD.A_mn16(b, ADDR.INPUT_HOLD)
     BIT.n8_A(b, INPUT_KEY_BIT.L_BTN_B)
     JR_Z(b, "SCROLL_UP_SINGLE")
@@ -2264,6 +2251,16 @@ def build_boot_bank(
     OR.L(b)
     JR_Z(b, "CHECK_DOWN")
 
+    LD.A_L(b)
+    AND.n8(b, 0x07)
+    JR_Z(b, "SHIFT_UP_ALIGNED")
+    LD.B_n8(b, 0)
+    LD.C_A(b)
+    OR.A(b)
+    SBC.HL_BC(b)
+    JR(b, "SHIFT_UP_STORE")
+
+    b.label("SHIFT_UP_ALIGNED")
     LD.BC_n16(b, scroll_skip)
     OR.A(b)
     SBC.HL_BC(b)
@@ -2304,7 +2301,7 @@ def build_boot_bank(
     LD.A_n8(b, 1)
     LD.mn16_A(b, ADDR.AUTO_SCROLL_DIR)
 
-    # SHIFT 押下時は scroll_skip 行スクロールして全体を再描画
+    # SHIFT 押下時は 8 行単位/端までスクロールして全体を再描画
     LD.A_mn16(b, ADDR.INPUT_HOLD)
     BIT.n8_A(b, INPUT_KEY_BIT.L_BTN_B)
     JR_Z(b, "SCROLL_DOWN_SINGLE")
@@ -2323,13 +2320,27 @@ def build_boot_bank(
     JP_C(b, "CHECK_AUTO_SCROLL")
 
     EX.DE_HL(b)  # HL = current, DE = limit
+    LD.A_L(b)
+    AND.n8(b, 0x07)
+    JR_Z(b, "SHIFT_DOWN_ALIGNED")
+    LD.B_n8(b, 0)
+    LD.C_A(b)
+    LD.A_n8(b, 8)
+    SUB.C(b)
+    LD.C_A(b)
+    ADD.HL_BC(b)
+    JR(b, "SHIFT_DOWN_CLAMP")
+
+    b.label("SHIFT_DOWN_ALIGNED")
     LD.BC_n16(b, scroll_skip)
     ADD.HL_BC(b)
 
+    b.label("SHIFT_DOWN_CLAMP")
     PUSH.HL(b)
     OR.A(b)
     SBC.HL_DE(b)
     JR_C(b, "SHIFT_DOWN_USE_CANDIDATE")
+    JR_Z(b, "SHIFT_DOWN_USE_CANDIDATE")
     POP.AF(b)  # 候補を破棄
     EX.DE_HL(b)  # HL = limit
     JR(b, "SHIFT_DOWN_STORE")
@@ -3155,7 +3166,7 @@ def main() -> None:
         bgm_enabled_default=bgm_enabled_default,
         bgm_fps=args.bgm_fps,
         bgm_data=bgm_data,
-        scroll_skip=args.scroll_skip,
+        scroll_skip=SCROLL_SKIP_,
         use_debug_scene=args.use_debug_scene,
         log_lines=log_lines,
         debug_build=args.debug_build,
