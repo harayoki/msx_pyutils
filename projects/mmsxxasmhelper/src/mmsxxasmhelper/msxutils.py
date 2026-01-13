@@ -1196,6 +1196,7 @@ def build_scroll_name_table_func2(
     OUTI_256_FUNC: Func,
     OUTI_256_FUNC_NO_WAIT: Func | None = None,  # Noneを許容
     *,
+    name: str = "SCROLL_NAME_TABLE",
     use_no_wait: Literal["PARTIAL", "YES"] = "PARTIAL",                     # 生成時のフラグ
     group: str = DEFAULT_FUNC_GROUP_NAME
 ) -> Func:
@@ -1217,8 +1218,10 @@ def build_scroll_name_table_func2(
         for _ in range(5):  # HL = HL * 32
             ADD.HL_HL(block)
 
+        lut_label = unique_label(f"{name}_NAME_TABLE_512_LUT")
+
         # 2. テーブルの物理アドレスを加算
-        LD.DE_label(block, "NAME_TABLE_512_LUT")
+        LD.DE_label(block, lut_label)
         ADD.HL_DE(block)
         PUSH.HL(block)
 
@@ -1252,8 +1255,8 @@ def build_scroll_name_table_func2(
         RET(block)
 
         # --- 512バイト LUT ---
-        block.label("NAME_TABLE_512_LUT")
+        block.label(lut_label)
         lut_data = [i for i in range(256)] * 2
         DB(block, *lut_data)
 
-    return Func("SCROLL_NAME_TABLE", scroll_name_table, group=group)
+    return Func(name, scroll_name_table, group=group)
