@@ -20,6 +20,7 @@ MSX1 SCREEN2 の縦スクロール ASCII16 MegaROM ビルダー。
   自動スクロール／自動ページ送り／BEEP／BGM／VDP wait は ESC で開く SCREEN 0 の
   設定メニューから切り替えられる。スペースで次の画像、GRAPHキーで前の画像に循環
   切り替えし、切り替え時に簡易 Beep を鳴らす。
+- `--use-debug-scene` 指定時は SHIFT+左 でデバッグシーンへ、ESC で戻る。
 - タイトル画面はカウントダウン付きで表示し、SPACE で開始、ESC で設定メニューへ遷移する。
 - `--use-debug-image` を指定するとテスト用パターンを生成し、それ以外ではビルド結果を
   ROM として出力、必要に応じてログを rominfo に書き出す。
@@ -207,8 +208,8 @@ class Messages:
     @_localized
     def debug_scene_help(cls) -> dict[str, str]:
         return {
-            "jp": "SHIFT+D でデバッグシーンを開けるようにする",
-            "en": "Allow opening the debug scene with SHIFT+D.",
+            "jp": "SHIFT+左 でデバッグシーンを開けるようにする",
+            "en": "Allow opening the debug scene with SHIFT+Left.",
         }
 
     @_localized
@@ -758,11 +759,6 @@ QUANTIZED_SUFFIX = "_quantized"
 
 SCROLL_VIEWER_FUNC_GROUP = "scroll_viewer"
 DEBUG_SCENE_FUNC_GROUP = "scroll_viewer_debug_scene"
-KEYBOARD_ROW_ASDF = 2
-KEYBOARD_BIT_D = 2
-KEYBOARD_ROW_SHIFT = 6
-KEYBOARD_BIT_SHIFT = 0
-
 AUTO_ADVANCE_INTERVAL_FRAMES = [
     0,
     180 * 60,
@@ -799,6 +795,8 @@ AUTO_SCROLL_EDGE_WAIT_FRAMES = [
     30,
 ]
 H_TIMI_HOOK_ADDR = 0xFD9F
+CHSNS = 0x009C
+CHGET = 0x009F
 
 # 状況を保存するメモリアドレス
 mem_addr_allocator = MemAddrAllocator(WORK_RAM_BASE)
@@ -1069,7 +1067,6 @@ def build_scroll_debug_render_func(
 def build_debug_scene_bank(
     image_entries: Sequence[ImageEntry],
     *,
-    update_input_addr: int,
     fill_byte: int,
     debug_build: bool = False,
 ) -> bytes:
@@ -1099,15 +1096,18 @@ def build_debug_scene_bank(
         width=40,
         group=DEBUG_SCENE_FUNC_GROUP,
     )
+    update_input_func_debug = build_update_input_func(
+        ADDR.INPUT_HOLD,
+        ADDR.INPUT_TRG,
+        extra_key="tab",
+        group=DEBUG_SCENE_FUNC_GROUP,
+    )
     debug_scene_func, _ = build_screen0_debug_scene(
         debug_pages,
-        update_input_func=UPDATE_INPUT_FUNC,
-        update_input_addr=update_input_addr,
+        update_input_func=update_input_func_debug,
         input_hold_addr=ADDR.INPUT_HOLD,
         input_trg_addr=ADDR.INPUT_TRG,
         page_index_addr=ADDR.CURRENT_IMAGE_ADDR,
-        enter_key_matrix=(KEYBOARD_ROW_ASDF, KEYBOARD_BIT_D),
-        enter_key_shift_matrix=(KEYBOARD_ROW_SHIFT, KEYBOARD_BIT_SHIFT),
         exit_key_bit=INPUT_KEY_BIT.L_ESC,
         header_lines=[
             "<DEBUG>",
@@ -2209,6 +2209,25 @@ def build_boot_bank(
 
     b.label("CHECK_DEBUG_SCENE")
     if use_debug_scene:
+        LD.A_mn16(b, ADDR.INPUT_TRG)
+        BIT.n8_A(b, INPUT_KEY_BIT.L_LEFT)
+        JP_Z(b, "CHECK_UP")
+        LD.A_mn16(b, ADDR.INPUT_HOLD)
+        BIT.n8_A(b, INPUT_KEY_BIT.L_BTN_B)
+        JP_Z(b, "CHECK_UP")
+        JP(b, "ENTER_DEBUG_SCENE")
+
+    b.label("ENTER_DEBUG_SCENE")
+    if use_debug_scene:
+        XOR.A(b)
+        LD.mn16_A(b, ADDR.INPUT_TRG)
+        LD.mn16_A(b, ADDR.INPUT_HOLD)
+        b.label("DEBUG_SCENE_CLEAR_KBUF")
+        CALL(b, CHSNS)
+        JR_Z(b, "DEBUG_SCENE_CLEAR_KBUF_DONE")
+        CALL(b, CHGET)
+        JR(b, "DEBUG_SCENE_CLEAR_KBUF")
+        b.label("DEBUG_SCENE_CLEAR_KBUF_DONE")
         LD.A_mn16(b, ADDR.CURRENT_PAGE2_BANK_ADDR)
         PUSH.AF(b)
         LD.A_n8(b, debug_scene_bank)
@@ -2218,6 +2237,10 @@ def build_boot_bank(
         POP.AF(b)
         LD.mn16_A(b, ADDR.CURRENT_PAGE2_BANK_ADDR)
         set_page2_bank(b)
+        apply_viewer_screen_settings(b)
+        LD.A_mn16(b, ADDR.CURRENT_IMAGE_ADDR)
+        UPDATE_IMAGE_DISPLAY_FUNC.call(b)
+        JP(b, "MAIN_LOOP")
 
     b.label("CHECK_UP")
     # --- [メインループ内の上下入力処理をここから差し替え] ---
@@ -2896,11 +2919,8 @@ def build(
         )
     ]
     if use_debug_scene:
-        if UPDATE_INPUT_FUNC.defined_pc is None:
-            raise ValueError("UPDATE_INPUT_FUNC address must be defined for debug scene")
         debug_scene_bank_data = build_debug_scene_bank(
             image_entries,
-            update_input_addr=UPDATE_INPUT_FUNC.defined_pc,
             fill_byte=fill_byte,
             debug_build=debug_build,
         )
