@@ -1067,7 +1067,6 @@ def build_scroll_debug_render_func(
 def build_debug_scene_bank(
     image_entries: Sequence[ImageEntry],
     *,
-    update_input_addr: int,
     fill_byte: int,
     debug_build: bool = False,
 ) -> bytes:
@@ -1097,10 +1096,15 @@ def build_debug_scene_bank(
         width=40,
         group=DEBUG_SCENE_FUNC_GROUP,
     )
+    update_input_func_debug = build_update_input_func(
+        ADDR.INPUT_HOLD,
+        ADDR.INPUT_TRG,
+        extra_key="tab",
+        group=DEBUG_SCENE_FUNC_GROUP,
+    )
     debug_scene_func, _ = build_screen0_debug_scene(
         debug_pages,
-        update_input_func=UPDATE_INPUT_FUNC,
-        update_input_addr=update_input_addr,
+        update_input_func=update_input_func_debug,
         input_hold_addr=ADDR.INPUT_HOLD,
         input_trg_addr=ADDR.INPUT_TRG,
         page_index_addr=ADDR.CURRENT_IMAGE_ADDR,
@@ -1117,6 +1121,7 @@ def build_debug_scene_bank(
     )
 
     block = Block(debug=debug_build)
+    update_input_func_debug.define(block)
     debug_scene_func.define(block)
     define_created_funcs(block, DEBUG_SCENE_FUNC_GROUP, debug_scene_func)
     assembled = block.finalize(origin=DATA_BANK_ADDR)
@@ -2915,11 +2920,8 @@ def build(
         )
     ]
     if use_debug_scene:
-        if UPDATE_INPUT_FUNC.defined_pc is None:
-            raise ValueError("UPDATE_INPUT_FUNC address must be defined for debug scene")
         debug_scene_bank_data = build_debug_scene_bank(
             image_entries,
-            update_input_addr=UPDATE_INPUT_FUNC.defined_pc,
             fill_byte=fill_byte,
             debug_build=debug_build,
         )
