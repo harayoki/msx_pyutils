@@ -591,7 +591,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--title-wait-seconds",
         type=int,
-        default=5,
+        default=3,
         help=Messages.title_wait_help(),
     )
     parser.add_argument(
@@ -650,7 +650,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--auto-scroll",
         choices=AUTO_SCROLL_LEVEL_CHOICES,
-        default="5",
+        default="6",
         help=Messages.auto_scroll_help(),
     )
     # --scroll-skip option is intentionally disabled (fixed to SCROLL_SKIP_).
@@ -1624,7 +1624,7 @@ SCROLL_CONFIGS = {
     "DOWN": [(0, -16), (8, -8), (16, 0)],  # VRAM下段にTARGET_ROW、上段に-16
 }
 SCROLL_BLOCK_ORDER = {
-    "UP": (0, 1, 2),  # 必要なら (2, 1, 0) に変更して下→中→上へ
+    "UP": (2, 1, 0),  # 必要なら (2, 1, 0) に変更して下→中→上へ
     "DOWN": (2, 1, 0),  # 方向ごとに変更しやすいように分離
 }
 
