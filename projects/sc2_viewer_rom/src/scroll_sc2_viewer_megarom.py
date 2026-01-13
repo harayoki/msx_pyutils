@@ -1378,24 +1378,16 @@ def build_scroll_vram_xfer_func(with_wait: bool = True, group: str = DEFAULT_FUN
     return Func(func_name, scroll_vram_xfer, group=group)
 
 
-def emit_call_by_vdp_wait_config(
-    block: Block,
-    *,
-    config_addr: int,
-    wait_func: Func,
-    nowait_func: Func,
-    label_prefix: str,
-) -> None:
-    wait_label = unique_label(f"{label_prefix}_WAIT")
-    done_label = unique_label(f"{label_prefix}_DONE")
-    LD.A_mn16(block, config_addr)
-    OR.A(block)
-    JR_Z(block, wait_label)
-    nowait_func.call(block)
-    JR(block, done_label)
-    block.label(wait_label)
-    wait_func.call(block)
-    block.label(done_label)
+def emit_patchable_call(block: Block, *, label: str, target_func: Func) -> None:
+    block.emit(0xCD)  # CALL nn
+    block.label(label)
+    pos = block.emit(0x00, 0x00)
+    block.add_abs16_fixup(pos, target_func.name)
+
+
+def emit_store_hl_to_label(block: Block, label: str) -> None:
+    pos = block.emit(0x22, 0x00, 0x00)  # LD (nn),HL
+    block.add_abs16_fixup(pos + 1, label)
 
 
 def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func:
@@ -1457,12 +1449,14 @@ def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func
 
         XOR.A(block)
         HALT(block)  # VBLANK待ち
-        emit_call_by_vdp_wait_config(
+        emit_patchable_call(
             block,
-            config_addr=ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
-            wait_func=SCROLL_NAME_TABLE_FUNC,
-            nowait_func=SCROLL_NAME_TABLE_FUNC_NOWAIT,
-            label_prefix="NTWAIT_DRAW",
+            label="NTWAIT_DRAW_CALL_ADDR",
+            target_func=(
+                SCROLL_NAME_TABLE_FUNC
+                if args.vdp_wait_for_name_table == 0
+                else SCROLL_NAME_TABLE_FUNC_NOWAIT
+            ),
         )
 
         # --- パターンジェネレータ転送 ---
@@ -1474,12 +1468,14 @@ def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func
         POP.DE(block)
         POP.HL(block)
         LD.D_n8(block, 24)  # 24行分転送
-        emit_call_by_vdp_wait_config(
+        emit_patchable_call(
             block,
-            config_addr=ADDR.CONFIG_VDP_WAIT_PATTERN_GEN,
-            wait_func=SCROLL_VRAM_XFER_FUNC,
-            nowait_func=SCROLL_VRAM_XFER_FUNC_NO_WAIT,
-            label_prefix="PGWAIT_DRAW",
+            label="PGWAIT_DRAW_CALL_ADDR",
+            target_func=(
+                SCROLL_VRAM_XFER_FUNC
+                if args.vdp_wait_for_pattern_gen == 0
+                else SCROLL_VRAM_XFER_FUNC_NO_WAIT
+            ),
         )
 
         # --- カラーテーブル転送 ---
@@ -1491,12 +1487,14 @@ def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func
         POP.DE(block)
         POP.HL(block)
         LD.D_n8(block, 24)  # 24行分転送
-        emit_call_by_vdp_wait_config(
+        emit_patchable_call(
             block,
-            config_addr=ADDR.CONFIG_VDP_WAIT_COLOR_TABLE,
-            wait_func=SCROLL_VRAM_XFER_FUNC,
-            nowait_func=SCROLL_VRAM_XFER_FUNC_NO_WAIT,
-            label_prefix="CTWAIT_DRAW",
+            label="CTWAIT_DRAW_CALL_ADDR",
+            target_func=(
+                SCROLL_VRAM_XFER_FUNC
+                if args.vdp_wait_for_color_table == 0
+                else SCROLL_VRAM_XFER_FUNC_NO_WAIT
+            ),
         )
 
         RET(block)
@@ -1536,6 +1534,97 @@ SCROLL_NAME_TABLE_FUNC_NOWAIT = build_scroll_name_table_func2(
 SCROLL_VRAM_XFER_FUNC = build_scroll_vram_xfer_func(group=SCROLL_VIEWER_FUNC_GROUP)
 SCROLL_VRAM_XFER_FUNC_NO_WAIT = build_scroll_vram_xfer_func(
     with_wait=False, group=SCROLL_VIEWER_FUNC_GROUP
+)
+
+
+def build_vdp_wait_sync_call_func(
+    label: str,
+    *,
+    default_func: Func,
+    group: str = DEFAULT_FUNC_GROUP_NAME,
+) -> Func:
+    def call_outi(block: Block) -> None:
+        emit_patchable_call(block, label=label, target_func=default_func)
+        RET(block)
+
+    return Func(label.replace("_CALL_ADDR", ""), call_outi, no_auto_ret=True, group=group)
+
+
+VDP_WAIT_SYNC_NT_CALL_FUNC = build_vdp_wait_sync_call_func(
+    "NTWAIT_SYNC_CALL_ADDR",
+    default_func=(
+        OUTI_256_FUNC if args.vdp_wait_for_name_table == 0 else OUTI_256_FUNC_NO_WAIT
+    ),
+    group=SCROLL_VIEWER_FUNC_GROUP,
+)
+VDP_WAIT_SYNC_PG_CALL_FUNC = build_vdp_wait_sync_call_func(
+    "PGWAIT_SYNC_CALL_ADDR",
+    default_func=(
+        OUTI_256_FUNC if args.vdp_wait_for_pattern_gen == 0 else OUTI_256_FUNC_NO_WAIT
+    ),
+    group=SCROLL_VIEWER_FUNC_GROUP,
+)
+VDP_WAIT_SYNC_CT_CALL_FUNC = build_vdp_wait_sync_call_func(
+    "CTWAIT_SYNC_CALL_ADDR",
+    default_func=(
+        OUTI_256_FUNC if args.vdp_wait_for_color_table == 0 else OUTI_256_FUNC_NO_WAIT
+    ),
+    group=SCROLL_VIEWER_FUNC_GROUP,
+)
+
+
+def build_vdp_wait_change_handler(
+    *,
+    config_addr: int,
+    wait_func: Func,
+    nowait_func: Func,
+    patch_labels: Sequence[str],
+    label: str,
+    group: str = DEFAULT_FUNC_GROUP_NAME,
+) -> Func:
+    def handle_change(block: Block) -> None:
+        use_wait_label = unique_label(f"{label}_USE_WAIT")
+        done_label = unique_label(f"{label}_DONE")
+        LD.A_mn16(block, config_addr)
+        OR.A(block)
+        JR_Z(block, use_wait_label)
+        LD.HL_label(block, nowait_func.name)
+        for patch_label in patch_labels:
+            emit_store_hl_to_label(block, patch_label)
+        JR(block, done_label)
+        block.label(use_wait_label)
+        LD.HL_label(block, wait_func.name)
+        for patch_label in patch_labels:
+            emit_store_hl_to_label(block, patch_label)
+        block.label(done_label)
+        RET(block)
+
+    return Func(label, handle_change, no_auto_ret=True, group=group)
+
+
+VDP_WAIT_NAME_CHANGED_FUNC = build_vdp_wait_change_handler(
+    config_addr=ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
+    wait_func=SCROLL_NAME_TABLE_FUNC,
+    nowait_func=SCROLL_NAME_TABLE_FUNC_NOWAIT,
+    patch_labels=["NTWAIT_DRAW_CALL_ADDR", "NTWAIT_SYNC_CALL_ADDR"],
+    label="VDP_WAIT_NAME_CHANGED",
+    group=SCROLL_VIEWER_FUNC_GROUP,
+)
+VDP_WAIT_PATTERN_CHANGED_FUNC = build_vdp_wait_change_handler(
+    config_addr=ADDR.CONFIG_VDP_WAIT_PATTERN_GEN,
+    wait_func=SCROLL_VRAM_XFER_FUNC,
+    nowait_func=SCROLL_VRAM_XFER_FUNC_NO_WAIT,
+    patch_labels=["PGWAIT_DRAW_CALL_ADDR", "PGWAIT_SYNC_CALL_ADDR"],
+    label="VDP_WAIT_PATTERN_CHANGED",
+    group=SCROLL_VIEWER_FUNC_GROUP,
+)
+VDP_WAIT_COLOR_CHANGED_FUNC = build_vdp_wait_change_handler(
+    config_addr=ADDR.CONFIG_VDP_WAIT_COLOR_TABLE,
+    wait_func=SCROLL_VRAM_XFER_FUNC,
+    nowait_func=SCROLL_VRAM_XFER_FUNC_NO_WAIT,
+    patch_labels=["CTWAIT_DRAW_CALL_ADDR", "CTWAIT_SYNC_CALL_ADDR"],
+    label="VDP_WAIT_COLOR_CHANGED",
+    group=SCROLL_VIEWER_FUNC_GROUP,
 )
 
 
@@ -1821,13 +1910,7 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
             LD.HL_n16(b, 0x1800 + (0x100 * buf_index))
             set_vram_write_macro(b)
             POP.HL(b)
-            emit_call_by_vdp_wait_config(
-                b,
-                config_addr=ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
-                wait_func=OUTI_256_FUNC,
-                nowait_func=OUTI_256_FUNC_NO_WAIT,
-                label_prefix=f"NTWAIT_SYNC_{direction}_{buf_index}",
-            )
+            VDP_WAIT_SYNC_NT_CALL_FUNC.call(b)
             POP.AF(b)
 
         # 方向に応じた表示順でループ
@@ -1844,26 +1927,14 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
             LD.HL_mn16(block, ADDR.SYNC_SCROLL_PG_VRAM_ADDRS + (2 * buf_index))
             set_vram_write_macro(block)
             EX.DE_HL(block)
-            emit_call_by_vdp_wait_config(
-                block,
-                config_addr=ADDR.CONFIG_VDP_WAIT_PATTERN_GEN,
-                wait_func=OUTI_256_FUNC,
-                nowait_func=OUTI_256_FUNC_NO_WAIT,
-                label_prefix=f"PGWAIT_SYNC_{direction}_{buf_index}",
-            )
+            VDP_WAIT_SYNC_PG_CALL_FUNC.call(block)
 
             # --- B: カラー(CT)転送 ---
             LD.DE_n16(block, ADDR.CT_BUFFER + (0x100 * buf_index))
             LD.HL_mn16(block, ADDR.SYNC_SCROLL_CT_VRAM_ADDRS + (2 * buf_index))
             set_vram_write_macro(block)
             EX.DE_HL(block)
-            emit_call_by_vdp_wait_config(
-                block,
-                config_addr=ADDR.CONFIG_VDP_WAIT_COLOR_TABLE,
-                wait_func=OUTI_256_FUNC,
-                nowait_func=OUTI_256_FUNC_NO_WAIT,
-                label_prefix=f"CTWAIT_SYNC_{direction}_{buf_index}",
-            )
+            VDP_WAIT_SYNC_CT_CALL_FUNC.call(block)
             EI(block)
 
         RET(block)
@@ -1915,16 +1986,19 @@ def build_config_scene_func(
             "NTWAIT",
             ["YES", "NO "],
             ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
+            on_change_addr=VDP_WAIT_NAME_CHANGED_FUNC,
         ),
         Screen0ConfigEntry(
             "PGWAIT",
             ["YES", "NO "],
             ADDR.CONFIG_VDP_WAIT_PATTERN_GEN,
+            on_change_addr=VDP_WAIT_PATTERN_CHANGED_FUNC,
         ),
         Screen0ConfigEntry(
             "CTWAIT",
             ["YES", "NO "],
             ADDR.CONFIG_VDP_WAIT_COLOR_TABLE,
+            on_change_addr=VDP_WAIT_COLOR_CHANGED_FUNC,
         ),
     ]
 
@@ -2141,6 +2215,9 @@ def build_boot_bank(
 
     # コンフィグの初期値を設定
     mem_addr_allocator.emit_initial_value_loader(b)
+    VDP_WAIT_NAME_CHANGED_FUNC.call(b)
+    VDP_WAIT_PATTERN_CHANGED_FUNC.call(b)
+    VDP_WAIT_COLOR_CHANGED_FUNC.call(b)
     if bgm_start_bank is not None:
         LD.A_n8(b, bgm_start_bank & 0xFF)
         # LD.mn16_A(b, ADDR.BGM_BANK_ADDR)
