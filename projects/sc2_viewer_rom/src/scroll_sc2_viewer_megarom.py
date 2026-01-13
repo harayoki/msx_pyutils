@@ -376,22 +376,22 @@ class Messages:
     @_localized
     def vdp_wait_name_help(cls) -> dict[str, str]:
         return {
-            "jp": "VDP WAITの設定(name table) (PARTIAL/NOWAIT, default: NOWAIT)",
-            "en": "VDP WAIT setting (name table) (PARTIAL/NOWAIT, default: NOWAIT).",
+            "jp": "VDP WAITの設定(name table) (WAIT/NOWAIT, default: NOWAIT)",
+            "en": "VDP WAIT setting (name table) (WAIT/NOWAIT, default: NOWAIT).",
         }
 
     @_localized
     def vdp_wait_pattern_help(cls) -> dict[str, str]:
         return {
-            "jp": "VDP WAITの設定(pattern gen) (PARTIAL/NOWAIT, default: NOWAIT)",
-            "en": "VDP WAIT setting (pattern gen) (PARTIAL/NOWAIT, default: NOWAIT).",
+            "jp": "VDP WAITの設定(pattern gen) (WAIT/NOWAIT, default: NOWAIT)",
+            "en": "VDP WAIT setting (pattern gen) (WAIT/NOWAIT, default: NOWAIT).",
         }
 
     @_localized
     def vdp_wait_color_help(cls) -> dict[str, str]:
         return {
-            "jp": "VDP WAITの設定(color table) (PARTIAL/NOWAIT, default: NOWAIT)",
-            "en": "VDP WAIT setting (color table) (PARTIAL/NOWAIT, default: NOWAIT).",
+            "jp": "VDP WAITの設定(color table) (WAIT/NOWAIT, default: NOWAIT)",
+            "en": "VDP WAIT setting (color table) (WAIT/NOWAIT, default: NOWAIT).",
         }
 
     @_localized
@@ -680,21 +680,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "-vwn",
         "--vdp-wait-for-name-table",
-        choices=["PARTIAL", "NOWAIT"],
+        choices=["WAIT", "NOWAIT"],
         default="NOWAIT",
         help=Messages.vdp_wait_name_help(),
     )
     parser.add_argument(
         "-vwp",
         "--vdp-wait-for-pattern-gen",
-        choices=["PARTIAL", "NOWAIT"],
+        choices=["WAIT", "NOWAIT"],
         default="NOWAIT",
         help=Messages.vdp_wait_pattern_help(),
     )
     parser.add_argument(
         "-vwc",
         "--vdp-wait-for-color-table",
-        choices=["PARTIAL", "NOWAIT"],
+        choices=["WAIT", "NOWAIT"],
         default="NOWAIT",
         help=Messages.vdp_wait_color_help(),
     )
@@ -713,7 +713,7 @@ def parse_args() -> argparse.Namespace:
     args.auto_page = auto_page_map[args.auto_page]
     args.auto_page_edge = auto_page_edge_map[args.auto_page_edge]
     args.auto_scroll = auto_scroll_map[args.auto_scroll]
-    vdp_wait_map = {"PARTIAL": 0, "NOWAIT": 1}
+    vdp_wait_map = {"WAIT": 0, "NOWAIT": 1}
     args.vdp_wait_for_name_table = vdp_wait_map[args.vdp_wait_for_name_table]
     args.vdp_wait_for_pattern_gen = vdp_wait_map[args.vdp_wait_for_pattern_gen]
     args.vdp_wait_for_color_table = vdp_wait_map[args.vdp_wait_for_color_table]
@@ -1437,7 +1437,7 @@ def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func
 
         XOR.A(block)
         HALT(block)  # VBLANK待ち
-        SCROLL_NAME_TABLE_FUNC_NOWAIT_SELECTED.call(block)  # VBLANK中はＶＤＰウェイトをなくせる
+        SCROLL_NAME_TABLE_FUNC_SELECTED.call(block)  # VBLANK中はＶＤＰウェイトをなくせる
 
         # --- パターンジェネレータ転送 ---
         calc_scroll_ptr(block, is_color=False)
@@ -1495,11 +1495,10 @@ SCROLL_NAME_TABLE_FUNC_NOWAIT = build_scroll_name_table_func2(
     use_no_wait="YES",
     group=SCROLL_VIEWER_FUNC_GROUP
 )
-SCROLL_NAME_TABLE_FUNC_NOWAIT_SELECTED = (
-    SCROLL_NAME_TABLE_FUNC_NOWAIT_PARTIAL
-    if args.vdp_wait_for_name_table == 0
-    else SCROLL_NAME_TABLE_FUNC_NOWAIT
-)
+if args.vdp_wait_for_name_table == 0:
+    SCROLL_NAME_TABLE_FUNC_SELECTED = SCROLL_NAME_TABLE_FUNC
+else:
+    SCROLL_NAME_TABLE_FUNC_SELECTED = SCROLL_NAME_TABLE_FUNC_NOWAIT
 SCROLL_VRAM_XFER_FUNC = build_scroll_vram_xfer_func(group=SCROLL_VIEWER_FUNC_GROUP)
 
 
@@ -1782,7 +1781,7 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
         LD.C_n8(block, 0x98)
 
         def emit_name_table_block(b: Block, buf_index: int) -> None:
-            if args.vdp_wait_for_name_table == 0 and buf_index != 0:
+            if args.vdp_wait_for_name_table == 0:
                 outi_nt_func = OUTI_256_FUNC
             else:
                 outi_nt_func = OUTI_256_FUNC_NO_WAIT
