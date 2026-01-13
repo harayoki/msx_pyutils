@@ -868,24 +868,24 @@ class ADDR:
         initial_value=bytes([args.auto_scroll]),
         description="自動スクロール速度 (0-9)",
     )
-    # CONFIG_VDP_WAIT_NAME_TABLE = madd(
-    #     "CONFIG_VDP_WAIT_NAME_TABLE",
-    #     1,
-    #     initial_value=bytes([args.vdp_wait_for_name_table]),
-    #     description="VDP WAIT (name table) (0=PARTIAL,1=NOWAIT)",
-    # )
-    # CONFIG_VDP_WAIT_PATTERN_GEN = madd(
-    #     "CONFIG_VDP_WAIT_PATTERN_GEN",
-    #     1,
-    #     initial_value=bytes([args.vdp_wait_for_pattern_gen]),
-    #     description="VDP WAIT (pattern gen) (0=PARTIAL,1=NOWAIT)",
-    # )
-    # CONFIG_VDP_WAIT_COLOR_TABLE = madd(
-    #     "CONFIG_VDP_WAIT_COLOR_TABLE",
-    #     1,
-    #     initial_value=bytes([args.vdp_wait_for_color_table]),
-    #     description="VDP WAIT (color table) (0=PARTIAL,1=NOWAIT)",
-    # )
+    CONFIG_VDP_WAIT_NAME_TABLE = madd(
+        "CONFIG_VDP_WAIT_NAME_TABLE",
+        1,
+        initial_value=bytes([args.vdp_wait_for_name_table]),
+        description="VDP WAIT (name table) (0=PARTIAL,1=NOWAIT)",
+    )
+    CONFIG_VDP_WAIT_PATTERN_GEN = madd(
+        "CONFIG_VDP_WAIT_PATTERN_GEN",
+        1,
+        initial_value=bytes([args.vdp_wait_for_pattern_gen]),
+        description="VDP WAIT (pattern gen) (0=PARTIAL,1=NOWAIT)",
+    )
+    CONFIG_VDP_WAIT_COLOR_TABLE = madd(
+        "CONFIG_VDP_WAIT_COLOR_TABLE",
+        1,
+        initial_value=bytes([args.vdp_wait_for_color_table]),
+        description="VDP WAIT (color table) (0=PARTIAL,1=NOWAIT)",
+    )
     CONFIG_AUTO_PAGE_EDGE = madd(
         "CONFIG_AUTO_PAGE_EDGE",
         1,
@@ -1378,6 +1378,26 @@ def build_scroll_vram_xfer_func(with_wait: bool = True, group: str = DEFAULT_FUN
     return Func(func_name, scroll_vram_xfer, group=group)
 
 
+def emit_call_by_vdp_wait_config(
+    block: Block,
+    *,
+    config_addr: int,
+    wait_func: Func,
+    nowait_func: Func,
+    label_prefix: str,
+) -> None:
+    wait_label = unique_label(f"{label_prefix}_WAIT")
+    done_label = unique_label(f"{label_prefix}_DONE")
+    LD.A_mn16(block, config_addr)
+    OR.A(block)
+    JR_Z(block, wait_label)
+    nowait_func.call(block)
+    JR(block, done_label)
+    block.label(wait_label)
+    wait_func.call(block)
+    block.label(done_label)
+
+
 def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func:
     def draw_scroll_view(block: Block) -> None:
         """
@@ -1437,7 +1457,13 @@ def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func
 
         XOR.A(block)
         HALT(block)  # VBLANK待ち
-        SCROLL_NAME_TABLE_FUNC_SELECTED.call(block)  # VBLANK中はＶＤＰウェイトをなくせる
+        emit_call_by_vdp_wait_config(
+            block,
+            config_addr=ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
+            wait_func=SCROLL_NAME_TABLE_FUNC,
+            nowait_func=SCROLL_NAME_TABLE_FUNC_NOWAIT,
+            label_prefix="NTWAIT_DRAW",
+        )
 
         # --- パターンジェネレータ転送 ---
         calc_scroll_ptr(block, is_color=False)
@@ -1448,7 +1474,13 @@ def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func
         POP.DE(block)
         POP.HL(block)
         LD.D_n8(block, 24)  # 24行分転送
-        SCROLL_VRAM_XFER_FUNC.call(block)
+        emit_call_by_vdp_wait_config(
+            block,
+            config_addr=ADDR.CONFIG_VDP_WAIT_PATTERN_GEN,
+            wait_func=SCROLL_VRAM_XFER_FUNC,
+            nowait_func=SCROLL_VRAM_XFER_FUNC_NO_WAIT,
+            label_prefix="PGWAIT_DRAW",
+        )
 
         # --- カラーテーブル転送 ---
         calc_scroll_ptr(block, is_color=True)
@@ -1459,7 +1491,13 @@ def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func
         POP.DE(block)
         POP.HL(block)
         LD.D_n8(block, 24)  # 24行分転送
-        SCROLL_VRAM_XFER_FUNC.call(block)
+        emit_call_by_vdp_wait_config(
+            block,
+            config_addr=ADDR.CONFIG_VDP_WAIT_COLOR_TABLE,
+            wait_func=SCROLL_VRAM_XFER_FUNC,
+            nowait_func=SCROLL_VRAM_XFER_FUNC_NO_WAIT,
+            label_prefix="CTWAIT_DRAW",
+        )
 
         RET(block)
 
@@ -1495,11 +1533,10 @@ SCROLL_NAME_TABLE_FUNC_NOWAIT = build_scroll_name_table_func2(
     use_no_wait="YES",
     group=SCROLL_VIEWER_FUNC_GROUP
 )
-if args.vdp_wait_for_name_table == 0:
-    SCROLL_NAME_TABLE_FUNC_SELECTED = SCROLL_NAME_TABLE_FUNC
-else:
-    SCROLL_NAME_TABLE_FUNC_SELECTED = SCROLL_NAME_TABLE_FUNC_NOWAIT
 SCROLL_VRAM_XFER_FUNC = build_scroll_vram_xfer_func(group=SCROLL_VIEWER_FUNC_GROUP)
+SCROLL_VRAM_XFER_FUNC_NO_WAIT = build_scroll_vram_xfer_func(
+    with_wait=False, group=SCROLL_VIEWER_FUNC_GROUP
+)
 
 
 def build_update_image_display_func(
@@ -1768,24 +1805,9 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
     def sync_scroll_transfer(block: Block) -> None:
         LD.mn16_A(block, ADDR.NT_SCROLL_ROW_CACHE)
 
-        if args.vdp_wait_for_pattern_gen == 1:
-            outi_pg_func = OUTI_256_FUNC_NO_WAIT
-        else:
-            outi_pg_func = OUTI_256_FUNC
-
-        if args.vdp_wait_for_color_table == 1:
-            outi_ct_func = OUTI_256_FUNC_NO_WAIT
-        else:
-            outi_ct_func = OUTI_256_FUNC
-
         LD.C_n8(block, 0x98)
 
         def emit_name_table_block(b: Block, buf_index: int) -> None:
-            if args.vdp_wait_for_name_table == 0:
-                outi_nt_func = OUTI_256_FUNC
-            else:
-                outi_nt_func = OUTI_256_FUNC_NO_WAIT
-
             PUSH.AF(b)
             AND.n8(b, 0x07)
             LD.L_A(b)
@@ -1799,7 +1821,13 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
             LD.HL_n16(b, 0x1800 + (0x100 * buf_index))
             set_vram_write_macro(b)
             POP.HL(b)
-            outi_nt_func.call(b)
+            emit_call_by_vdp_wait_config(
+                b,
+                config_addr=ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
+                wait_func=OUTI_256_FUNC,
+                nowait_func=OUTI_256_FUNC_NO_WAIT,
+                label_prefix=f"NTWAIT_SYNC_{direction}_{buf_index}",
+            )
             POP.AF(b)
 
         # 方向に応じた表示順でループ
@@ -1816,14 +1844,26 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
             LD.HL_mn16(block, ADDR.SYNC_SCROLL_PG_VRAM_ADDRS + (2 * buf_index))
             set_vram_write_macro(block)
             EX.DE_HL(block)
-            outi_pg_func.call(block)
+            emit_call_by_vdp_wait_config(
+                block,
+                config_addr=ADDR.CONFIG_VDP_WAIT_PATTERN_GEN,
+                wait_func=OUTI_256_FUNC,
+                nowait_func=OUTI_256_FUNC_NO_WAIT,
+                label_prefix=f"PGWAIT_SYNC_{direction}_{buf_index}",
+            )
 
             # --- B: カラー(CT)転送 ---
             LD.DE_n16(block, ADDR.CT_BUFFER + (0x100 * buf_index))
             LD.HL_mn16(block, ADDR.SYNC_SCROLL_CT_VRAM_ADDRS + (2 * buf_index))
             set_vram_write_macro(block)
             EX.DE_HL(block)
-            outi_ct_func.call(block)
+            emit_call_by_vdp_wait_config(
+                block,
+                config_addr=ADDR.CONFIG_VDP_WAIT_COLOR_TABLE,
+                wait_func=OUTI_256_FUNC,
+                nowait_func=OUTI_256_FUNC_NO_WAIT,
+                label_prefix=f"CTWAIT_SYNC_{direction}_{buf_index}",
+            )
             EI(block)
 
         RET(block)
@@ -1871,21 +1911,21 @@ def build_config_scene_func(
             AUTO_SCROLL_LEVEL_CHOICES,
             ADDR.CONFIG_AUTO_SCROLL,
         ),
-        # Screen0ConfigEntry(
-        #     "NTWAIT",
-        #     ["YES", "NO "],
-        #     ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
-        # ),
-        # Screen0ConfigEntry(
-        #     "PGWAIT",
-        #     ["YES", "NO "],
-        #     ADDR.CONFIG_VDP_WAIT_PATTERN_GEN,
-        # ),
-        # Screen0ConfigEntry(
-        #     "CTWAIT",
-        #     ["YES", "NO "],
-        #     ADDR.CONFIG_VDP_WAIT_COLOR_TABLE,
-        # ),
+        Screen0ConfigEntry(
+            "NTWAIT",
+            ["YES", "NO "],
+            ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
+        ),
+        Screen0ConfigEntry(
+            "PGWAIT",
+            ["YES", "NO "],
+            ADDR.CONFIG_VDP_WAIT_PATTERN_GEN,
+        ),
+        Screen0ConfigEntry(
+            "CTWAIT",
+            ["YES", "NO "],
+            ADDR.CONFIG_VDP_WAIT_COLOR_TABLE,
+        ),
     ]
 
     init_func, loop_func, table_funcs = build_screen0_config_menu(
