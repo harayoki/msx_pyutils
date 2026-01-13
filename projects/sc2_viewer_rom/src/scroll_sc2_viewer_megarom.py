@@ -2143,6 +2143,9 @@ def build_boot_bank(
     if not image_entries:
         raise ValueError("image_entries must not be empty")
 
+    if debug_build:
+        set_debug(True)
+
     UPDATE_IMAGE_DISPLAY_FUNC = build_update_image_display_func(
         len(image_entries), group=SCROLL_VIEWER_FUNC_GROUP
     )
@@ -2227,9 +2230,6 @@ def build_boot_bank(
         LD.mn16_A(block, BAKCLR)
         LD.mn16_A(block, BDRCLR)
         CALL(block, CHGCLR)
-
-    if debug_build:
-        set_debug(True)
 
     # ensure_funcs_defined(OUTI_FUNCS)
 
