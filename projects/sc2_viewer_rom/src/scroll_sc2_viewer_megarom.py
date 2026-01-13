@@ -1144,8 +1144,6 @@ def build_debug_scene_bank(
         page_index_addr=ADDR.CURRENT_IMAGE_ADDR,
         exit_key_bit=INPUT_KEY_BIT.L_ESC,
         header_lines=[
-            "<DEBUG>",
-            "ESC : EXIT DEBUG",
         ],
         header_col=debug_label_col,
         label_col=debug_label_col,
