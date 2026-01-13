@@ -20,6 +20,7 @@ MSX1 SCREEN2 の縦スクロール ASCII16 MegaROM ビルダー。
   自動スクロール／自動ページ送り／BEEP／BGM／VDP wait は ESC で開く SCREEN 0 の
   設定メニューから切り替えられる。スペースで次の画像、GRAPHキーで前の画像に循環
   切り替えし、切り替え時に簡易 Beep を鳴らす。
+- `--use-debug-scene` 指定時は SHIFT+左 でデバッグシーンへ、ESC で戻る。
 - タイトル画面はカウントダウン付きで表示し、SPACE で開始、ESC で設定メニューへ遷移する。
 - `--use-debug-image` を指定するとテスト用パターンを生成し、それ以外ではビルド結果を
   ROM として出力、必要に応じてログを rominfo に書き出す。
@@ -33,6 +34,7 @@ import argparse
 import io
 import os
 import random
+import re
 import shutil
 import subprocess
 import sys
@@ -137,7 +139,11 @@ from mmsxxasmhelper.msxutils import (
     append_webmsx_rom_type_suffix,
     WebMSXRomType,
 )
-from mmsxxasmhelper.debug_scene import build_screen0_debug_scene
+from mmsxxasmhelper.debug_scene import (
+    DebugValuePosition,
+    build_hex_value_render_func,
+    build_screen0_debug_scene,
+)
 from mmsxxasmhelper.config_scene import (
     Screen0ConfigEntry,
     build_screen0_config_menu,
@@ -202,8 +208,8 @@ class Messages:
     @_localized
     def debug_scene_help(cls) -> dict[str, str]:
         return {
-            "jp": "ESC でデバッグシーンを挟む（設定画面の前に表示）",
-            "en": "Insert debug scene on ESC before the settings screen.",
+            "jp": "SHIFT+左 でデバッグシーンを開けるようにする",
+            "en": "Allow opening the debug scene with SHIFT+Left.",
         }
 
     @_localized
@@ -752,7 +758,7 @@ QUANTIZED_SUFFIX = "_quantized"
 
 
 SCROLL_VIEWER_FUNC_GROUP = "scroll_viewer"
-
+DEBUG_SCENE_FUNC_GROUP = "scroll_viewer_debug_scene"
 AUTO_ADVANCE_INTERVAL_FRAMES = [
     0,
     180 * 60,
@@ -789,6 +795,8 @@ AUTO_SCROLL_EDGE_WAIT_FRAMES = [
     30,
 ]
 H_TIMI_HOOK_ADDR = 0xFD9F
+CHSNS = 0x009C
+CHGET = 0x009F
 
 # 状況を保存するメモリアドレス
 mem_addr_allocator = MemAddrAllocator(WORK_RAM_BASE)
@@ -949,6 +957,175 @@ class ImageData:
     pattern: bytes
     color: bytes
     tile_rows: int
+
+
+def build_scroll_debug_lines(label_col: int) -> tuple[list[str], list[DebugValuePosition]]:
+    placeholder_re = re.compile(r"0{2,4}")
+    value_lines: list[tuple[str, list[tuple[int, int]]]] = [
+        ("CUR_SCROLL_ROW : 0000h", [(ADDR.CURRENT_SCROLL_ROW, 2)]),
+        ("TARGET_ROW     : 0000h", [(ADDR.TARGET_ROW, 2)]),
+        (
+            "DIR/NT/OFF     : 00h/00h/00h",
+            [
+                (ADDR.SCROLL_DIRECTION, 1),
+                (ADDR.NT_SCROLL_ROW_CACHE, 1),
+                (ADDR.VRAM_ROW_OFFSET, 1),
+            ],
+        ),
+        ("SKIP_AUTO      : 00h", [(ADDR.SKIP_AUTO_SCROLL, 1)]),
+        (
+            "AUTO_SCROLL/SP : 00h/00h",
+            [
+                (ADDR.CONFIG_AUTO_SCROLL, 1),
+                (ADDR.CONFIG_AUTO_SPEED, 1),
+            ],
+        ),
+        ("AUTO_PAGE_EDGE : 00h", [(ADDR.CONFIG_AUTO_PAGE_EDGE, 1)]),
+        ("AUTO_CNT       : 0000h", [(ADDR.AUTO_SCROLL_COUNTER, 2)]),
+        ("AUTO_EDGE_WAIT : 0000h", [(ADDR.AUTO_SCROLL_EDGE_WAIT, 2)]),
+        (
+            "AUTO_DIR/TURN  : 00h/00h",
+            [
+                (ADDR.AUTO_SCROLL_DIR, 1),
+                (ADDR.AUTO_SCROLL_TURN_STATE, 1),
+            ],
+        ),
+        ("AUTO_ADV_CNT   : 0000h", [(ADDR.AUTO_ADVANCE_COUNTER, 2)]),
+        (
+            "PG_VRAM[0-2]   : 0000h 0000h 0000h",
+            [
+                (ADDR.SYNC_SCROLL_PG_VRAM_ADDRS, 2),
+                (ADDR.SYNC_SCROLL_PG_VRAM_ADDRS + 2, 2),
+                (ADDR.SYNC_SCROLL_PG_VRAM_ADDRS + 4, 2),
+            ],
+        ),
+        (
+            "CT_VRAM[0-2]   : 0000h 0000h 0000h",
+            [
+                (ADDR.SYNC_SCROLL_CT_VRAM_ADDRS, 2),
+                (ADDR.SYNC_SCROLL_CT_VRAM_ADDRS + 2, 2),
+                (ADDR.SYNC_SCROLL_CT_VRAM_ADDRS + 4, 2),
+            ],
+        ),
+    ]
+
+    lines: list[str] = []
+    positions: list[DebugValuePosition] = []
+    for line_index, (line, values) in enumerate(value_lines):
+        lines.append(line)
+        placeholders = list(placeholder_re.finditer(line))
+        if len(placeholders) != len(values):
+            raise ValueError("Debug line placeholder count mismatch")
+        for placeholder, (addr, size) in zip(placeholders, values):
+            expected_len = 4 if size == 2 else 2
+            if len(placeholder.group(0)) != expected_len:
+                raise ValueError("Debug line placeholder size mismatch")
+            positions.append(
+                DebugValuePosition(
+                    line_index=line_index,
+                    col=label_col + placeholder.start(),
+                    size=size,
+                    addr=addr,
+                )
+            )
+    return lines, positions
+
+
+def build_scroll_debug_render_func(
+    lines: Sequence[str],
+    positions: Sequence[DebugValuePosition],
+    *,
+    top_row: int,
+    label_col: int,
+    screen0_name_base: int,
+    width: int,
+    group: str,
+) -> Func:
+    hex_render_func = build_hex_value_render_func(
+        positions,
+        top_row=top_row,
+        screen0_name_base=screen0_name_base,
+        width=width,
+        group=group,
+    )
+
+    def render_values(block: Block) -> None:
+        for line_index, line in enumerate(lines):
+            write_text_with_cursor_macro(
+                block,
+                line,
+                label_col,
+                top_row + line_index,
+                name_table=screen0_name_base,
+            )
+        hex_render_func.call(block)
+        RET(block)
+
+    return Func("DEBUG_SCROLL_RENDER", render_values, group=group)
+
+
+def build_debug_scene_bank(
+    image_entries: Sequence[ImageEntry],
+    *,
+    fill_byte: int,
+    debug_build: bool = False,
+) -> bytes:
+    debug_pages: list[list[str]] = []
+    total_images = len(image_entries)
+    debug_label_col = 2
+    debug_top_row = 4
+    scroll_debug_lines, scroll_value_positions = build_scroll_debug_lines(
+        debug_label_col
+    )
+    for idx, entry in enumerate(image_entries):
+        debug_pages.append(
+            [
+                f"IMAGE {idx + 1:03}/{total_images:03}",
+                f"START BANK : {entry.start_bank:02X}h",
+                f"TILE ROWS  : {entry.tile_rows}",
+                f"COLOR BANK : {entry.color_bank:02X}h",
+                f"COLOR ADDR : {entry.color_address:04X}h",
+            ]
+        )
+    debug_scroll_render_func = build_scroll_debug_render_func(
+        scroll_debug_lines,
+        scroll_value_positions,
+        top_row=debug_top_row,
+        label_col=debug_label_col,
+        screen0_name_base=0x0000,
+        width=40,
+        group=DEBUG_SCENE_FUNC_GROUP,
+    )
+    update_input_func_debug = build_update_input_func(
+        ADDR.INPUT_HOLD,
+        ADDR.INPUT_TRG,
+        extra_key="tab",
+        group=DEBUG_SCENE_FUNC_GROUP,
+    )
+    debug_scene_func, _ = build_screen0_debug_scene(
+        debug_pages,
+        update_input_func=update_input_func_debug,
+        input_hold_addr=ADDR.INPUT_HOLD,
+        input_trg_addr=ADDR.INPUT_TRG,
+        page_index_addr=ADDR.CURRENT_IMAGE_ADDR,
+        exit_key_bit=INPUT_KEY_BIT.L_ESC,
+        header_lines=[
+            "<DEBUG>",
+            "ESC : EXIT DEBUG",
+        ],
+        header_col=debug_label_col,
+        label_col=debug_label_col,
+        top_row=debug_top_row,
+        group=DEBUG_SCENE_FUNC_GROUP,
+        render_hook_func=debug_scroll_render_func,
+    )
+
+    block = Block(debug=debug_build)
+    debug_scene_func.define(block)
+    define_created_funcs(block, DEBUG_SCENE_FUNC_GROUP, debug_scene_func)
+    assembled = block.finalize(origin=DATA_BANK_ADDR)
+    data = bytes(pad_bytes(list(assembled), PAGE_SIZE, fill_byte))
+    return data
 
 @contextmanager
 def open_workdir(path: Path | None):
@@ -1807,6 +1984,7 @@ def build_boot_bank(
     bgm_fps: int,
     scroll_skip:int,
     use_debug_scene: bool,
+    debug_scene_bank: int | None,
     log_lines: List[str] | None = None,
     debug_build: bool = False,
 ) -> bytes:
@@ -1914,32 +2092,8 @@ def build_boot_bank(
         group=SCROLL_VIEWER_FUNC_GROUP,
     )
 
-    DEBUG_SCENE_FUNC: Func | None = None
-    if use_debug_scene:
-        debug_pages: list[list[str]] = []
-        total_images = len(image_entries)
-        for idx, entry in enumerate(image_entries):
-            debug_pages.append(
-                [
-                    f"IMAGE {idx + 1:03}/{total_images:03}",
-                    f"START BANK : {entry.start_bank:02X}h",
-                    f"TILE ROWS  : {entry.tile_rows}",
-                    f"COLOR BANK : {entry.color_bank:02X}h",
-                    f"COLOR ADDR : {entry.color_address:04X}h",
-                ]
-            )
-        DEBUG_SCENE_FUNC, _ = build_screen0_debug_scene(
-            debug_pages,
-            update_input_func=UPDATE_INPUT_FUNC,
-            input_trg_addr=ADDR.INPUT_TRG,
-            page_index_addr=ADDR.CURRENT_IMAGE_ADDR,
-            header_lines=[
-                "<DEBUG>",
-                "ESC : OPEN SETTINGS",
-            ],
-            header_col=2,
-            group=SCROLL_VIEWER_FUNC_GROUP,
-        )
+    if use_debug_scene and debug_scene_bank is None:
+        raise ValueError("debug_scene_bank must be set when use_debug_scene is True")
 
     config_table_dump = io.StringIO()
     dump_func_bytes_on_finalize(
@@ -2043,17 +2197,50 @@ def build_boot_bank(
     XOR.A(b)
     LD.mn16_A(b, ADDR.SKIP_AUTO_SCROLL)
 
-    # ESC でデバッグ／コンフィグ（ヘルプ）シーンへ遷移
+    # ESC は設定画面
     LD.A_mn16(b, ADDR.INPUT_TRG)
     BIT.n8_A(b, INPUT_KEY_BIT.L_ESC)
-    JR_Z(b, "CHECK_UP")
-    if DEBUG_SCENE_FUNC is not None:
-        DEBUG_SCENE_FUNC.call(b)
+    JR_Z(b, "CHECK_DEBUG_SCENE")
     CONFIG_SCENE_FUNC.call(b)
     apply_viewer_screen_settings(b)
     LD.A_mn16(b, ADDR.CURRENT_IMAGE_ADDR)
     UPDATE_IMAGE_DISPLAY_FUNC.call(b)
     JP(b, "MAIN_LOOP")
+
+    b.label("CHECK_DEBUG_SCENE")
+    if use_debug_scene:
+        LD.A_mn16(b, ADDR.INPUT_TRG)
+        BIT.n8_A(b, INPUT_KEY_BIT.L_LEFT)
+        JP_Z(b, "CHECK_UP")
+        LD.A_mn16(b, ADDR.INPUT_HOLD)
+        BIT.n8_A(b, INPUT_KEY_BIT.L_BTN_B)
+        JP_Z(b, "CHECK_UP")
+        JP(b, "ENTER_DEBUG_SCENE")
+
+    b.label("ENTER_DEBUG_SCENE")
+    if use_debug_scene:
+        XOR.A(b)
+        LD.mn16_A(b, ADDR.INPUT_TRG)
+        LD.mn16_A(b, ADDR.INPUT_HOLD)
+        b.label("DEBUG_SCENE_CLEAR_KBUF")
+        CALL(b, CHSNS)
+        JR_Z(b, "DEBUG_SCENE_CLEAR_KBUF_DONE")
+        CALL(b, CHGET)
+        JR(b, "DEBUG_SCENE_CLEAR_KBUF")
+        b.label("DEBUG_SCENE_CLEAR_KBUF_DONE")
+        LD.A_mn16(b, ADDR.CURRENT_PAGE2_BANK_ADDR)
+        PUSH.AF(b)
+        LD.A_n8(b, debug_scene_bank)
+        LD.mn16_A(b, ADDR.CURRENT_PAGE2_BANK_ADDR)
+        set_page2_bank(b)
+        CALL(b, DATA_BANK_ADDR)
+        POP.AF(b)
+        LD.mn16_A(b, ADDR.CURRENT_PAGE2_BANK_ADDR)
+        set_page2_bank(b)
+        apply_viewer_screen_settings(b)
+        LD.A_mn16(b, ADDR.CURRENT_IMAGE_ADDR)
+        UPDATE_IMAGE_DISPLAY_FUNC.call(b)
+        JP(b, "MAIN_LOOP")
 
     b.label("CHECK_UP")
     # --- [メインループ内の上下入力処理をここから差し替え] ---
@@ -2626,6 +2813,8 @@ def build(
     image_entries: list[ImageEntry] = []
     data_banks: list[bytes] = []
     next_bank = 1
+    debug_scene_bank: int | None = None
+    debug_scene_insert_index: int | None = None
     header_bytes: list[int] = []
     bgm_start_bank: int | None = None
     if bgm_data is not None:
@@ -2637,6 +2826,10 @@ def build(
         data_banks.append(bytes(bgm_payload))
         bgm_bank_count = 1
         next_bank += bgm_bank_count
+    if use_debug_scene:
+        debug_scene_bank = next_bank
+        debug_scene_insert_index = len(data_banks)
+        next_bank += 1
 
     if start_positions is None:
         start_positions = ["top"] * len(images)
@@ -2720,10 +2913,20 @@ def build(
             bgm_fps,
             scroll_skip,
             use_debug_scene,
+            debug_scene_bank,
             log_lines,
             debug_build,
         )
     ]
+    if use_debug_scene:
+        debug_scene_bank_data = build_debug_scene_bank(
+            image_entries,
+            fill_byte=fill_byte,
+            debug_build=debug_build,
+        )
+        if debug_scene_insert_index is None:
+            raise ValueError("debug_scene_insert_index must be set for debug scene")
+        data_banks.insert(debug_scene_insert_index, debug_scene_bank_data)
     # banks.extend(outi_funcs_banks)
     banks.extend(data_banks)
     return b"".join(banks)
