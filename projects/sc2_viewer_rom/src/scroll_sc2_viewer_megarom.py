@@ -1121,7 +1121,6 @@ def build_debug_scene_bank(
     )
 
     block = Block(debug=debug_build)
-    update_input_func_debug.define(block)
     debug_scene_func.define(block)
     define_created_funcs(block, DEBUG_SCENE_FUNC_GROUP, debug_scene_func)
     assembled = block.finalize(origin=DATA_BANK_ADDR)
