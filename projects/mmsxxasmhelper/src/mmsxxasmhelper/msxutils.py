@@ -47,6 +47,7 @@ __all__ = [
     "VDP_DATA",
     "VDP_PAL",
     "enable_turbor_high_speed_macro",
+    "check_turbor_high_speed_mode_macro",
     "parse_color",
     "BASIC_COLORS_MSX1",
     "palette_distance",
@@ -71,6 +72,7 @@ ENASLT = 0x0024  # スロット切り替え
 RSLREG = 0x0138  # 現在のスロット情報取得
 # turboR 専用
 CHGCPU = 0x0180  # CPU 切り替え (A=0: Z80, 1: R800 ROM, 2: R800 DRAM)
+GETCPU = 0x0183  # CPU 状態取得 (A=0: Z80, 1: R800 ROM, 2: R800 DRAM)
 # EXPTBL = 0xFCC1  # 拡張スロット情報
 # EXPTBL_MINUS_1 = EXPTBL -1
 # CALSLT = 0x001C  # インタースロットCALL（任意スロットの任意アドレスを呼ぶ）
@@ -568,6 +570,35 @@ def enable_turbor_high_speed_macro(b: Block) -> None:
 
     b.label(end_label)
     # print("-----")
+
+
+def check_turbor_high_speed_mode_macro(b: Block) -> None:
+    """turboR の高速モード (R800 DRAM) かを判定する。
+
+    - turboR 以外では高速モード扱いにせず、Z フラグを立てる。
+    - turboR の場合は GETCPU で取得した値が 2 (R800 DRAM) なら NZ。
+
+    レジスタ変更: A
+    """
+
+    turbor_label = unique_label("__TURBOR_HIGH_SPEED_CHECK_TURBOR__")
+    end_label = unique_label("__TURBOR_HIGH_SPEED_CHECK_END__")
+
+    # turboR 判定
+    get_msxver_macro(b)
+    CP.n8(b, 0x03)
+    JP_Z(b, turbor_label)
+
+    # turboR 以外は高速モードではない扱い (Z フラグを立てる)
+    XOR.A(b)
+    JP(b, end_label)
+
+    # turboR の場合は CPU モードを確認
+    b.label(turbor_label)
+    CALL(b, GETCPU)
+    CP.n8(b, 0x02)
+
+    b.label(end_label)
 
 
 def set_screen_mode_macro(b: Block, mode: int) -> None:
@@ -1196,6 +1227,7 @@ def build_scroll_name_table_func2(
     OUTI_256_FUNC: Func,
     OUTI_256_FUNC_NO_WAIT: Func | None = None,  # Noneを許容
     *,
+    name: str = "SCROLL_NAME_TABLE",
     use_no_wait: Literal["PARTIAL", "YES"] = "PARTIAL",                     # 生成時のフラグ
     group: str = DEFAULT_FUNC_GROUP_NAME
 ) -> Func:
@@ -1217,8 +1249,10 @@ def build_scroll_name_table_func2(
         for _ in range(5):  # HL = HL * 32
             ADD.HL_HL(block)
 
+        lut_label = unique_label(f"{name}_NAME_TABLE_512_LUT")
+
         # 2. テーブルの物理アドレスを加算
-        LD.DE_label(block, "NAME_TABLE_512_LUT")
+        LD.DE_label(block, lut_label)
         ADD.HL_DE(block)
         PUSH.HL(block)
 
@@ -1252,8 +1286,8 @@ def build_scroll_name_table_func2(
         RET(block)
 
         # --- 512バイト LUT ---
-        block.label("NAME_TABLE_512_LUT")
+        block.label(lut_label)
         lut_data = [i for i in range(256)] * 2
         DB(block, *lut_data)
 
-    return Func("SCROLL_NAME_TABLE", scroll_name_table, group=group)
+    return Func(name, scroll_name_table, group=group)

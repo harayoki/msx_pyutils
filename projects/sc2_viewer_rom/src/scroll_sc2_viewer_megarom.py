@@ -104,6 +104,7 @@ from mmsxxasmhelper.core import (
     register_dump_target,
     dump_mem,
     dump_regs,
+    rewrite_func_calls,
 )
 from mmsxxasmhelper.msxutils import (
     CHGCLR,
@@ -133,6 +134,8 @@ from mmsxxasmhelper.msxutils import (
     write_text_with_cursor_macro,
     set_screen_display_macro,
     set_screen_display_status_flag_macro,
+    enable_turbor_high_speed_macro,
+    check_turbor_high_speed_mode_macro,
     quantize_msx1_image_two_colors,
     parse_color,
     nearest_palette_index,
@@ -853,6 +856,11 @@ class ADDR:
     CURRENT_PAGE2_BANK_ADDR = madd(
         "CURRENT_PAGE2_BANK_ADDR", 1, description="ページ2に設定中のバンク番号"
     )
+    TURBOR_HIGH_SPEED_MODE = madd(
+        "TURBOR_HIGH_SPEED_MODE",
+        1,
+        description="turboR高速モード(R800 DRAM)かどうか(1=高速,0=通常)",
+    )
     VGM_TIMER_FLAG = madd(
         "VGM_TIMER_FLAG", 1, initial_value=bytes([0]), description="VGM再生の1/2フレーム切り替えフラグ"
     )
@@ -868,24 +876,24 @@ class ADDR:
         initial_value=bytes([args.auto_scroll]),
         description="自動スクロール速度 (0-9)",
     )
-    # CONFIG_VDP_WAIT_NAME_TABLE = madd(
-    #     "CONFIG_VDP_WAIT_NAME_TABLE",
-    #     1,
-    #     initial_value=bytes([args.vdp_wait_for_name_table]),
-    #     description="VDP WAIT (name table) (0=PARTIAL,1=NOWAIT)",
-    # )
-    # CONFIG_VDP_WAIT_PATTERN_GEN = madd(
-    #     "CONFIG_VDP_WAIT_PATTERN_GEN",
-    #     1,
-    #     initial_value=bytes([args.vdp_wait_for_pattern_gen]),
-    #     description="VDP WAIT (pattern gen) (0=PARTIAL,1=NOWAIT)",
-    # )
-    # CONFIG_VDP_WAIT_COLOR_TABLE = madd(
-    #     "CONFIG_VDP_WAIT_COLOR_TABLE",
-    #     1,
-    #     initial_value=bytes([args.vdp_wait_for_color_table]),
-    #     description="VDP WAIT (color table) (0=PARTIAL,1=NOWAIT)",
-    # )
+    CONFIG_VDP_WAIT_NAME_TABLE = madd(
+        "CONFIG_VDP_WAIT_NAME_TABLE",
+        1,
+        initial_value=bytes([args.vdp_wait_for_name_table]),
+        description="VDP NT: WAIT / NOWAIT",
+    )
+    CONFIG_VDP_WAIT_PATTERN_GEN = madd(
+        "CONFIG_VDP_WAIT_PATTERN_GEN",
+        1,
+        initial_value=bytes([args.vdp_wait_for_pattern_gen]),
+        description="VDP PG: WAIT / NOWAIT",
+    )
+    CONFIG_VDP_WAIT_COLOR_TABLE = madd(
+        "CONFIG_VDP_WAIT_COLOR_TABLE",
+        1,
+        initial_value=bytes([args.vdp_wait_for_color_table]),
+        description="VDP CT: WAIT / NOWAIT",
+    )
     CONFIG_AUTO_PAGE_EDGE = madd(
         "CONFIG_AUTO_PAGE_EDGE",
         1,
@@ -911,6 +919,36 @@ class ADDR:
         "CONFIG_WORK_BASE",
         get_work_byte_length_for_screen0_config_menu(),
         description="コンフィグ用ワークベース",
+    )
+    PROXY_SCROLL_NAME_TABLE_CALL_TARGET = madd(
+        "PROXY_SCROLL_NAME_TABLE_CALL_TARGET",
+        2,
+        description="プロキシ: SCROLL_NAME_TABLE_CALL の呼び先",
+    )
+    PROXY_SCROLL_PG_VRAM_XFER_CALL_TARGET = madd(
+        "PROXY_SCROLL_PG_VRAM_XFER_CALL_TARGET",
+        2,
+        description="プロキシ: SCROLL_PG_VRAM_XFER_CALL の呼び先",
+    )
+    PROXY_SCROLL_CT_VRAM_XFER_CALL_TARGET = madd(
+        "PROXY_SCROLL_CT_VRAM_XFER_CALL_TARGET",
+        2,
+        description="プロキシ: SCROLL_CT_VRAM_XFER_CALL の呼び先",
+    )
+    PROXY_SYNC_SCROLL_NT_OUTI_CALL_TARGET = madd(
+        "PROXY_SYNC_SCROLL_NT_OUTI_CALL_TARGET",
+        2,
+        description="プロキシ: SYNC_SCROLL_NT_OUTI_CALL の呼び先",
+    )
+    PROXY_SYNC_SCROLL_PG_OUTI_CALL_TARGET = madd(
+        "PROXY_SYNC_SCROLL_PG_OUTI_CALL_TARGET",
+        2,
+        description="プロキシ: SYNC_SCROLL_PG_OUTI_CALL の呼び先",
+    )
+    PROXY_SYNC_SCROLL_CT_OUTI_CALL_TARGET = madd(
+        "PROXY_SYNC_SCROLL_CT_OUTI_CALL_TARGET",
+        2,
+        description="プロキシ: SYNC_SCROLL_CT_OUTI_CALL の呼び先",
     )
 
 
@@ -959,6 +997,7 @@ def build_scroll_debug_lines(label_col: int) -> tuple[list[str], list[DebugValue
                 (ADDR.VRAM_ROW_OFFSET, 1),
             ],
         ),
+        ("TURBOR HIGHSPD : 00h", [(ADDR.TURBOR_HIGH_SPEED_MODE, 1)]),
         ("SKIP_AUTO      : 00h", [(ADDR.SKIP_AUTO_SCROLL, 1)]),
         (
             "AUTO_SCROLL/SP : 00h/00h",
@@ -992,6 +1031,22 @@ def build_scroll_debug_lines(label_col: int) -> tuple[list[str], list[DebugValue
                 (ADDR.SYNC_SCROLL_CT_VRAM_ADDRS, 2),
                 (ADDR.SYNC_SCROLL_CT_VRAM_ADDRS + 2, 2),
                 (ADDR.SYNC_SCROLL_CT_VRAM_ADDRS + 4, 2),
+            ],
+        ),
+        (
+            "PROXY NT/PG/CT : 0000h 0000h 0000h",
+            [
+                (ADDR.PROXY_SCROLL_NAME_TABLE_CALL_TARGET, 2),
+                (ADDR.PROXY_SCROLL_PG_VRAM_XFER_CALL_TARGET, 2),
+                (ADDR.PROXY_SCROLL_CT_VRAM_XFER_CALL_TARGET, 2),
+            ],
+        ),
+        (
+            "PROXY SYNC N/P/C: 0000h 0000h 0000h",
+            [
+                (ADDR.PROXY_SYNC_SCROLL_NT_OUTI_CALL_TARGET, 2),
+                (ADDR.PROXY_SYNC_SCROLL_PG_OUTI_CALL_TARGET, 2),
+                (ADDR.PROXY_SYNC_SCROLL_CT_OUTI_CALL_TARGET, 2),
             ],
         ),
     ]
@@ -1097,8 +1152,6 @@ def build_debug_scene_bank(
         page_index_addr=ADDR.CURRENT_IMAGE_ADDR,
         exit_key_bit=INPUT_KEY_BIT.L_ESC,
         header_lines=[
-            "<DEBUG>",
-            "ESC : EXIT DEBUG",
         ],
         header_col=debug_label_col,
         label_col=debug_label_col,
@@ -1334,7 +1387,11 @@ def build_scroll_vram_xfer_func(with_wait: bool = True, group: str = DEFAULT_FUN
         # ※ 事前に VRAM アドレスセットは完了していること
         DI(block)
 
-        block.label("VRAM_PAGE_LOOP")
+        vram_page_loop = unique_label("VRAM_PAGE_LOOP")
+        vram_byte_loop = unique_label("VRAM_BYTE_LOOP")
+        not_next_bank = unique_label("NOT_NEXT_BANK")
+
+        block.label(vram_page_loop)
         PUSH.DE(block)  # 行数(D) と バンク番号(E) を保存
 
         # 現在のバンクをメガROMにセット (Eレジスタの値を使用)
@@ -1346,7 +1403,7 @@ def build_scroll_vram_xfer_func(with_wait: bool = True, group: str = DEFAULT_FUN
 
         # --- 1ページ(256byte) 転送ループ (64展開版) ---
         # OUTI_256はバンクが一緒なので使えない RAMコピーするとむしろ重くなる
-        block.label("VRAM_BYTE_LOOP")
+        block.label(vram_byte_loop)
         for _ in range(32):  # 16でもいいが32のほうが2%くらいはやい
             # 1バイト転送 (18T)
             OUTI(block)  # (HL)->(C), HL++, B--
@@ -1354,12 +1411,12 @@ def build_scroll_vram_xfer_func(with_wait: bool = True, group: str = DEFAULT_FUN
             if with_wait:
                 # JR_n8(block, 0)  # ウェイト (12T)　3マイクロ秒強稼ぐ
                 NOP(block, 2)  # 4*2=8T ウェイトの場合 これでも動くが危険？
-        JP_NZ(block, "VRAM_BYTE_LOOP")
+        JP_NZ(block, vram_byte_loop)
 
         # --- バンク境界チェック ---
         LD.A_H(block)
         CP.n8(block, 0xC0)  # HLが0xC000（バンク端）に達したか？
-        JR_C(block, "NOT_NEXT_BANK")
+        JR_C(block, not_next_bank)
 
         # --- バンク跨ぎ発生時の処理 ---
         POP.DE(block)  # 一時復帰してバンク番号(E)を取り出す
@@ -1368,10 +1425,10 @@ def build_scroll_vram_xfer_func(with_wait: bool = True, group: str = DEFAULT_FUN
         LD.H_n8(block, 0x80)  # アドレスを 0x8000 に戻す
         # 次のループの先頭で LD A,E / LD (0x7000),A が実行される
 
-        block.label("NOT_NEXT_BANK")
+        block.label(not_next_bank)
         POP.DE(block)  # 行数(D) と バンク(E) を復帰
         DEC.D(block)  # 行数カウンタを減らす
-        JP_NZ(block, "VRAM_PAGE_LOOP")
+        JP_NZ(block, vram_page_loop)
         EI(block)
 
     func_name = "scroll_vram_xfer" if with_wait else "sscroll_vram_xfer_no_wait"
@@ -1437,7 +1494,7 @@ def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func
 
         XOR.A(block)
         HALT(block)  # VBLANK待ち
-        SCROLL_NAME_TABLE_FUNC_SELECTED.call(block)  # VBLANK中はＶＤＰウェイトをなくせる
+        SCROLL_NAME_TABLE_CALL_FUNC.call(block)  # VBLANK中はＶＤＰウェイトをなくせる
 
         # --- パターンジェネレータ転送 ---
         calc_scroll_ptr(block, is_color=False)
@@ -1448,7 +1505,7 @@ def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func
         POP.DE(block)
         POP.HL(block)
         LD.D_n8(block, 24)  # 24行分転送
-        SCROLL_VRAM_XFER_FUNC.call(block)
+        SCROLL_VRAM_XFER_PG_CALL_FUNC.call(block)
 
         # --- カラーテーブル転送 ---
         calc_scroll_ptr(block, is_color=True)
@@ -1459,7 +1516,7 @@ def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func
         POP.DE(block)
         POP.HL(block)
         LD.D_n8(block, 24)  # 24行分転送
-        SCROLL_VRAM_XFER_FUNC.call(block)
+        SCROLL_VRAM_XFER_CT_CALL_FUNC.call(block)
 
         RET(block)
 
@@ -1486,20 +1543,49 @@ SCROLL_NAME_TABLE_FUNC = build_scroll_name_table_func(
 SCROLL_NAME_TABLE_FUNC_NOWAIT_PARTIAL = build_scroll_name_table_func2(
     OUTI_256_FUNC=OUTI_256_FUNC,
     OUTI_256_FUNC_NO_WAIT=OUTI_256_FUNC_NO_WAIT,
+    name="SCROLL_NAME_TABLE_NOWAIT_PARTIAL",
     use_no_wait="PARTIAL",
     group=SCROLL_VIEWER_FUNC_GROUP
 )
 SCROLL_NAME_TABLE_FUNC_NOWAIT = build_scroll_name_table_func2(
     OUTI_256_FUNC=OUTI_256_FUNC,
     OUTI_256_FUNC_NO_WAIT=OUTI_256_FUNC_NO_WAIT,
+    name="SCROLL_NAME_TABLE_NOWAIT",
     use_no_wait="YES",
     group=SCROLL_VIEWER_FUNC_GROUP
 )
-if args.vdp_wait_for_name_table == 0:
-    SCROLL_NAME_TABLE_FUNC_SELECTED = SCROLL_NAME_TABLE_FUNC
-else:
-    SCROLL_NAME_TABLE_FUNC_SELECTED = SCROLL_NAME_TABLE_FUNC_NOWAIT
 SCROLL_VRAM_XFER_FUNC = build_scroll_vram_xfer_func(group=SCROLL_VIEWER_FUNC_GROUP)
+SCROLL_VRAM_XFER_FUNC_NO_WAIT = build_scroll_vram_xfer_func(
+    with_wait=False, group=SCROLL_VIEWER_FUNC_GROUP
+)
+
+
+def build_call_proxy_func(name: str, target: Func, *, group: str) -> Func:
+    def proxy(block: Block) -> None:
+        target.call(block)
+        RET(block)
+
+    return Func(name, proxy, group=group)
+
+
+SCROLL_NAME_TABLE_CALL_FUNC = build_call_proxy_func(
+    "SCROLL_NAME_TABLE_CALL", SCROLL_NAME_TABLE_FUNC, group=SCROLL_VIEWER_FUNC_GROUP
+)
+SCROLL_VRAM_XFER_PG_CALL_FUNC = build_call_proxy_func(
+    "SCROLL_PG_VRAM_XFER_CALL", SCROLL_VRAM_XFER_FUNC, group=SCROLL_VIEWER_FUNC_GROUP
+)
+SCROLL_VRAM_XFER_CT_CALL_FUNC = build_call_proxy_func(
+    "SCROLL_CT_VRAM_XFER_CALL", SCROLL_VRAM_XFER_FUNC, group=SCROLL_VIEWER_FUNC_GROUP
+)
+SYNC_SCROLL_NT_OUTI_CALL_FUNC = build_call_proxy_func(
+    "SYNC_SCROLL_NT_OUTI_CALL", OUTI_256_FUNC, group=SCROLL_VIEWER_FUNC_GROUP
+)
+SYNC_SCROLL_PG_OUTI_CALL_FUNC = build_call_proxy_func(
+    "SYNC_SCROLL_PG_OUTI_CALL", OUTI_256_FUNC, group=SCROLL_VIEWER_FUNC_GROUP
+)
+SYNC_SCROLL_CT_OUTI_CALL_FUNC = build_call_proxy_func(
+    "SYNC_SCROLL_CT_OUTI_CALL", OUTI_256_FUNC, group=SCROLL_VIEWER_FUNC_GROUP
+)
 
 
 def build_update_image_display_func(
@@ -1768,24 +1854,9 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
     def sync_scroll_transfer(block: Block) -> None:
         LD.mn16_A(block, ADDR.NT_SCROLL_ROW_CACHE)
 
-        if args.vdp_wait_for_pattern_gen == 1:
-            outi_pg_func = OUTI_256_FUNC_NO_WAIT
-        else:
-            outi_pg_func = OUTI_256_FUNC
-
-        if args.vdp_wait_for_color_table == 1:
-            outi_ct_func = OUTI_256_FUNC_NO_WAIT
-        else:
-            outi_ct_func = OUTI_256_FUNC
-
         LD.C_n8(block, 0x98)
 
         def emit_name_table_block(b: Block, buf_index: int) -> None:
-            if args.vdp_wait_for_name_table == 0:
-                outi_nt_func = OUTI_256_FUNC
-            else:
-                outi_nt_func = OUTI_256_FUNC_NO_WAIT
-
             PUSH.AF(b)
             AND.n8(b, 0x07)
             LD.L_A(b)
@@ -1799,7 +1870,7 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
             LD.HL_n16(b, 0x1800 + (0x100 * buf_index))
             set_vram_write_macro(b)
             POP.HL(b)
-            outi_nt_func.call(b)
+            SYNC_SCROLL_NT_OUTI_CALL_FUNC.call(b)
             POP.AF(b)
 
         # 方向に応じた表示順でループ
@@ -1816,14 +1887,14 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
             LD.HL_mn16(block, ADDR.SYNC_SCROLL_PG_VRAM_ADDRS + (2 * buf_index))
             set_vram_write_macro(block)
             EX.DE_HL(block)
-            outi_pg_func.call(block)
+            SYNC_SCROLL_PG_OUTI_CALL_FUNC.call(block)
 
             # --- B: カラー(CT)転送 ---
             LD.DE_n16(block, ADDR.CT_BUFFER + (0x100 * buf_index))
             LD.HL_mn16(block, ADDR.SYNC_SCROLL_CT_VRAM_ADDRS + (2 * buf_index))
             set_vram_write_macro(block)
             EX.DE_HL(block)
-            outi_ct_func.call(block)
+            SYNC_SCROLL_CT_OUTI_CALL_FUNC.call(block)
             EI(block)
 
         RET(block)
@@ -1871,21 +1942,24 @@ def build_config_scene_func(
             AUTO_SCROLL_LEVEL_CHOICES,
             ADDR.CONFIG_AUTO_SCROLL,
         ),
-        # Screen0ConfigEntry(
-        #     "NTWAIT",
-        #     ["YES", "NO "],
-        #     ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
-        # ),
-        # Screen0ConfigEntry(
-        #     "PGWAIT",
-        #     ["YES", "NO "],
-        #     ADDR.CONFIG_VDP_WAIT_PATTERN_GEN,
-        # ),
-        # Screen0ConfigEntry(
-        #     "CTWAIT",
-        #     ["YES", "NO "],
-        #     ADDR.CONFIG_VDP_WAIT_COLOR_TABLE,
-        # ),
+        Screen0ConfigEntry(
+            "VDP NT",
+            ["WAIT  ", "NOWAIT"],
+            ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
+            on_change_addr=VDP_WAIT_NAME_TABLE_CHANGED_FUNC,
+        ),
+        Screen0ConfigEntry(
+            "VDP PG",
+            ["WAIT  ", "NOWAIT"],
+            ADDR.CONFIG_VDP_WAIT_PATTERN_GEN,
+            on_change_addr=VDP_WAIT_PATTERN_GEN_CHANGED_FUNC,
+        ),
+        Screen0ConfigEntry(
+            "VDP CT",
+            ["WAIT  ", "NOWAIT"],
+            ADDR.CONFIG_VDP_WAIT_COLOR_TABLE,
+            on_change_addr=VDP_WAIT_COLOR_TABLE_CHANGED_FUNC,
+        ),
     ]
 
     init_func, loop_func, table_funcs = build_screen0_config_menu(
@@ -1924,6 +1998,102 @@ SYNC_SCROLL_UP_TRANSFER_FUNC = build_sync_scroll_transfer_func(
 )
 SYNC_SCROLL_DOWN_TRANSFER_FUNC = build_sync_scroll_transfer_func(
     direction="DOWN", group=SCROLL_VIEWER_FUNC_GROUP
+)
+
+
+def build_vdp_wait_rewrite_func(
+    name: str,
+    config_addr: int,
+    *,
+    wait_calls: Sequence[tuple[Func, Func]],
+    nowait_calls: Sequence[tuple[Func, Func]],
+    wait_records: Sequence[tuple[int, Func]] = (),
+    nowait_records: Sequence[tuple[int, Func]] = (),
+) -> Func:
+    def store_proxy_targets(
+        block: Block, records: Sequence[tuple[int, Func]]
+    ) -> None:
+        for addr, target in records:
+            LD.HL_label(block, target.name)
+            LD.mn16_HL(block, addr)
+
+    def vdp_wait_setting_changed(block: Block) -> None:
+        LD.A_mn16(block, config_addr)
+        OR.A(block)
+        LABEL_NOWAIT = unique_label(f"{name}_NOWAIT")
+        JR_NZ(block, LABEL_NOWAIT)
+        for call_func, target_func in wait_calls:
+            rewrite_func_calls(block, call_func, target_func, origin=ROM_BASE)
+        store_proxy_targets(block, wait_records)
+        RET(block)
+        block.label(LABEL_NOWAIT)
+        for call_func, target_func in nowait_calls:
+            rewrite_func_calls(block, call_func, target_func, origin=ROM_BASE)
+        store_proxy_targets(block, nowait_records)
+        RET(block)
+
+    return Func(name, vdp_wait_setting_changed, group=SCROLL_VIEWER_FUNC_GROUP)
+
+
+VDP_WAIT_NAME_TABLE_CHANGED_FUNC = build_vdp_wait_rewrite_func(
+    "VDP_WAIT_NAME_TABLE_CHANGED",
+    ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
+    wait_calls=(
+        (SCROLL_NAME_TABLE_CALL_FUNC, SCROLL_NAME_TABLE_FUNC),
+        (SYNC_SCROLL_NT_OUTI_CALL_FUNC, OUTI_256_FUNC),
+    ),
+    nowait_calls=(
+        (SCROLL_NAME_TABLE_CALL_FUNC, SCROLL_NAME_TABLE_FUNC_NOWAIT),
+        (SYNC_SCROLL_NT_OUTI_CALL_FUNC, OUTI_256_FUNC_NO_WAIT),
+    ),
+    wait_records=(
+        (ADDR.PROXY_SCROLL_NAME_TABLE_CALL_TARGET, SCROLL_NAME_TABLE_FUNC),
+        (ADDR.PROXY_SYNC_SCROLL_NT_OUTI_CALL_TARGET, OUTI_256_FUNC),
+    ),
+    nowait_records=(
+        (ADDR.PROXY_SCROLL_NAME_TABLE_CALL_TARGET, SCROLL_NAME_TABLE_FUNC_NOWAIT),
+        (ADDR.PROXY_SYNC_SCROLL_NT_OUTI_CALL_TARGET, OUTI_256_FUNC_NO_WAIT),
+    ),
+)
+VDP_WAIT_PATTERN_GEN_CHANGED_FUNC = build_vdp_wait_rewrite_func(
+    "VDP_WAIT_PATTERN_GEN_CHANGED",
+    ADDR.CONFIG_VDP_WAIT_PATTERN_GEN,
+    wait_calls=(
+        (SCROLL_VRAM_XFER_PG_CALL_FUNC, SCROLL_VRAM_XFER_FUNC),
+        (SYNC_SCROLL_PG_OUTI_CALL_FUNC, OUTI_256_FUNC),
+    ),
+    nowait_calls=(
+        (SCROLL_VRAM_XFER_PG_CALL_FUNC, SCROLL_VRAM_XFER_FUNC_NO_WAIT),
+        (SYNC_SCROLL_PG_OUTI_CALL_FUNC, OUTI_256_FUNC_NO_WAIT),
+    ),
+    wait_records=(
+        (ADDR.PROXY_SCROLL_PG_VRAM_XFER_CALL_TARGET, SCROLL_VRAM_XFER_FUNC),
+        (ADDR.PROXY_SYNC_SCROLL_PG_OUTI_CALL_TARGET, OUTI_256_FUNC),
+    ),
+    nowait_records=(
+        (ADDR.PROXY_SCROLL_PG_VRAM_XFER_CALL_TARGET, SCROLL_VRAM_XFER_FUNC_NO_WAIT),
+        (ADDR.PROXY_SYNC_SCROLL_PG_OUTI_CALL_TARGET, OUTI_256_FUNC_NO_WAIT),
+    ),
+)
+VDP_WAIT_COLOR_TABLE_CHANGED_FUNC = build_vdp_wait_rewrite_func(
+    "VDP_WAIT_COLOR_TABLE_CHANGED",
+    ADDR.CONFIG_VDP_WAIT_COLOR_TABLE,
+    wait_calls=(
+        (SCROLL_VRAM_XFER_CT_CALL_FUNC, SCROLL_VRAM_XFER_FUNC),
+        (SYNC_SCROLL_CT_OUTI_CALL_FUNC, OUTI_256_FUNC),
+    ),
+    nowait_calls=(
+        (SCROLL_VRAM_XFER_CT_CALL_FUNC, SCROLL_VRAM_XFER_FUNC_NO_WAIT),
+        (SYNC_SCROLL_CT_OUTI_CALL_FUNC, OUTI_256_FUNC_NO_WAIT),
+    ),
+    wait_records=(
+        (ADDR.PROXY_SCROLL_CT_VRAM_XFER_CALL_TARGET, SCROLL_VRAM_XFER_FUNC),
+        (ADDR.PROXY_SYNC_SCROLL_CT_OUTI_CALL_TARGET, OUTI_256_FUNC),
+    ),
+    nowait_records=(
+        (ADDR.PROXY_SCROLL_CT_VRAM_XFER_CALL_TARGET, SCROLL_VRAM_XFER_FUNC_NO_WAIT),
+        (ADDR.PROXY_SYNC_SCROLL_CT_OUTI_CALL_TARGET, OUTI_256_FUNC_NO_WAIT),
+    ),
 )
 
 
@@ -1980,6 +2150,9 @@ def build_boot_bank(
 ) -> bytes:
     if not image_entries:
         raise ValueError("image_entries must not be empty")
+
+    if debug_build:
+        set_debug(True)
 
     UPDATE_IMAGE_DISPLAY_FUNC = build_update_image_display_func(
         len(image_entries), group=SCROLL_VIEWER_FUNC_GROUP
@@ -2066,9 +2239,6 @@ def build_boot_bank(
         LD.mn16_A(block, BDRCLR)
         CALL(block, CHGCLR)
 
-    if debug_build:
-        set_debug(True)
-
     # ensure_funcs_defined(OUTI_FUNCS)
 
     if any(entry.start_bank < 1 or entry.start_bank > 0xFF for entry in image_entries):
@@ -2101,6 +2271,9 @@ def build_boot_bank(
 
     # コンフィグの初期値を設定
     mem_addr_allocator.emit_initial_value_loader(b)
+    VDP_WAIT_NAME_TABLE_CHANGED_FUNC.call(b)
+    VDP_WAIT_PATTERN_GEN_CHANGED_FUNC.call(b)
+    VDP_WAIT_COLOR_TABLE_CHANGED_FUNC.call(b)
     if bgm_start_bank is not None:
         LD.A_n8(b, bgm_start_bank & 0xFF)
         # LD.mn16_A(b, ADDR.BGM_BANK_ADDR)
@@ -2110,6 +2283,15 @@ def build_boot_bank(
 
     AFTER_TITLE_CONFIG = unique_label("AFTER_TITLE_CONFIG")
     ENTER_CONFIG_FROM_TITLE = unique_label("ENTER_CONFIG_FROM_TITLE")
+    turbor_mode_label = unique_label("TURBOR_MODE_SET")
+
+    enable_turbor_high_speed_macro(b)
+    check_turbor_high_speed_mode_macro(b)
+    LD.A_n8(b, 1)
+    JR_NZ(b, turbor_mode_label)
+    XOR.A(b)
+    b.label(turbor_mode_label)
+    LD.mn16_A(b, ADDR.TURBOR_HIGH_SPEED_MODE)
 
     if skip_title_screen:
         apply_viewer_screen_settings(b)

@@ -146,7 +146,7 @@ def build_screen0_debug_scene(
     if enter_key_shift_bit is not None and input_hold_addr is None:
         raise ValueError("enter_key_shift_bit requires input_hold_addr")
 
-    title_lines = title_lines or ["", "DEBUG INFO", ""]
+    title_lines = title_lines or ["", "DEBUG INFO / ESC TO EXIT", ""]
     title_height = len(title_lines)
     if header_row is None:
         header_row = title_row + title_height
