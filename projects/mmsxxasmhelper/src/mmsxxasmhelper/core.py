@@ -163,6 +163,7 @@ class Block:
         self._finalize_callbacks: List[Callable[["Block", int], None]] = []
         self._debug_section_depth = 0
         self._label_rewrite_requests: List[_LabelRewriteRequest] = []
+        self._label_rewrite_debug_ranges: List[Tuple[int, int, str, str]] = []
 
     def _debug_allows_output(self) -> bool:
         return self._debug_section_depth == 0 or self.debug
@@ -349,6 +350,9 @@ class Block:
                     f"  rewrite bytes ({len(tmp_block.code)} bytes): {bytes_dump}",
                     file=sys.stderr,
                 )
+                self._label_rewrite_debug_ranges.append(
+                    (req.pos, len(tmp_block.code), req.old_label, req.new_label)
+                )
             self._label_rewrite_requests.pop(idx)
 
     def finalize(self, origin: int = 0, groups: Optional[List[str]] = None, func_in_bunk: bool = False) -> bytes:
@@ -394,6 +398,17 @@ class Block:
                 self.code[fx.pos] = offset & 0xFF
             else:
                 raise ValueError(f"unknown fixup kind: {fx.kind}")
+
+        for pos, size, old_label, new_label in self._label_rewrite_debug_ranges:
+            bytes_dump = " ".join(f"{b:02X}" for b in self.code[pos:pos + size])
+            print(
+                (
+                    "  rewrite final bytes "
+                    f"({size} bytes) at pos={pos}(0x{pos:04X}): "
+                    f"{old_label} -> {new_label}: {bytes_dump}"
+                ),
+                file=sys.stderr,
+            )
 
         for callback in self._finalize_callbacks:
             callback(self, origin)
