@@ -135,7 +135,7 @@ from mmsxxasmhelper.msxutils import (
     set_screen_display_macro,
     set_screen_display_status_flag_macro,
     enable_turbor_high_speed_macro,
-    check_turbor_high_speed_mode_macro,
+    check_cpu_mode_macro,
     quantize_msx1_image_two_colors,
     parse_color,
     nearest_palette_index,
@@ -856,10 +856,10 @@ class ADDR:
     CURRENT_PAGE2_BANK_ADDR = madd(
         "CURRENT_PAGE2_BANK_ADDR", 1, description="ページ2に設定中のバンク番号"
     )
-    TURBOR_HIGH_SPEED_MODE = madd(
-        "TURBOR_HIGH_SPEED_MODE",
+    CPU_MODE = madd(
+        "CPU_MODE",
         1,
-        description="turboR高速モード(R800 DRAM)かどうか(1=高速,0=通常)",
+        description="CPUモード(0:Z80, 1=R800 ROM(Z80互換), 2=R800 DRAM(高速))",
     )
     VGM_TIMER_FLAG = madd(
         "VGM_TIMER_FLAG", 1, initial_value=bytes([0]), description="VGM再生の1/2フレーム切り替えフラグ"
@@ -997,7 +997,7 @@ def build_scroll_debug_lines(label_col: int) -> tuple[list[str], list[DebugValue
                 (ADDR.VRAM_ROW_OFFSET, 1),
             ],
         ),
-        ("TURBOR HIGHSPD : 00h", [(ADDR.TURBOR_HIGH_SPEED_MODE, 1)]),
+        ("CPUMODE        : 00h", [(ADDR.CPU_MODE, 1)]),
         ("SKIP_AUTO      : 00h", [(ADDR.SKIP_AUTO_SCROLL, 1)]),
         (
             "AUTO_SCROLL/SP : 00h/00h",
@@ -2283,15 +2283,10 @@ def build_boot_bank(
 
     AFTER_TITLE_CONFIG = unique_label("AFTER_TITLE_CONFIG")
     ENTER_CONFIG_FROM_TITLE = unique_label("ENTER_CONFIG_FROM_TITLE")
-    turbor_mode_label = unique_label("TURBOR_MODE_SET")
 
     enable_turbor_high_speed_macro(b)
-    check_turbor_high_speed_mode_macro(b)
-    LD.A_n8(b, 1)
-    JR_NZ(b, turbor_mode_label)
-    XOR.A(b)
-    b.label(turbor_mode_label)
-    LD.mn16_A(b, ADDR.TURBOR_HIGH_SPEED_MODE)
+    check_cpu_mode_macro(b)
+    LD.mn16_A(b, ADDR.CPU_MODE)
 
     if skip_title_screen:
         apply_viewer_screen_settings(b)

@@ -46,8 +46,9 @@ __all__ = [
     "VDP_CTRL",
     "VDP_DATA",
     "VDP_PAL",
+    "disable_turobor_high_speed_macro",
     "enable_turbor_high_speed_macro",
-    "check_turbor_high_speed_mode_macro",
+    "check_cpu_mode_macro",
     "parse_color",
     "BASIC_COLORS_MSX1",
     "palette_distance",
@@ -70,9 +71,11 @@ CHPUT = 0x00A2  # 1文字出力（SCREEN0/1/2 text??、その他未対応）
 INITXT = 0x006C  # SCREEN 0 初期化
 ENASLT = 0x0024  # スロット切り替え
 RSLREG = 0x0138  # 現在のスロット情報取得
+
 # turboR 専用
 CHGCPU = 0x0180  # CPU 切り替え (A=0: Z80, 1: R800 ROM, 2: R800 DRAM)
 GETCPU = 0x0183  # CPU 状態取得 (A=0: Z80, 1: R800 ROM, 2: R800 DRAM)
+
 # EXPTBL = 0xFCC1  # 拡張スロット情報
 # EXPTBL_MINUS_1 = EXPTBL -1
 # CALSLT = 0x001C  # インタースロットCALL（任意スロットの任意アドレスを呼ぶ）
@@ -547,9 +550,38 @@ def set_msx2_palette_default_macro(b: Block) -> None:
     # print("-----")
     # print(_MSX2_PALETTE_BYTES)
 
+def disable_turobor_high_speed_macro(
+        b: Block, unsafe=False) -> None:
+    """
+    CPU を Z80 モードへ切り替える。
+    :param b: Block: コード生成用 Block
+    :param unsafe: True の場合、turboR かどうかの判定をしない
 
-def enable_turbor_high_speed_macro(b: Block) -> None:
-    """turboR の場合に R800 DRAM モードへ切り替える。
+    レジスタ変更: A
+    """
+    end_label = ""
+    if not unsafe:
+        end_label = unique_label("__TURBOR_HIGH_SPEED_DISABLE_END__")
+        # turboR 未満ではスキップ
+        get_msxver_macro(b)
+        # TODO 3より小さいか？ に処理を変更
+        CP.n8(b, 0x03)
+        JP_NZ(b, end_label)
+
+    LD.A_n8(b, 0x00)
+    CALL(b, CHGCPU)
+
+    if not unsafe:
+        b.label(end_label)
+
+
+def enable_turbor_high_speed_macro(
+        b: Block, mode: Literal["ROM", "DRAM"] = "ROM", unsafe=False) -> None:
+    """
+    R800 DRAM モードへ切り替える。
+    :param b: Block: コード生成用 Block
+    :param mode: "ROM" または "DRAM"。デフォルトは "ROM"。 DRAMモードはZ80非互換
+    :param unsafe: True の場合、turboR かどうかの判定をしない
 
     - MSXVER で turboR かを判定し、それ以外では何もしない。
     - R800 DRAM を指定するため、A=2 をセットして CHGCPU を呼び出す。
@@ -557,46 +589,57 @@ def enable_turbor_high_speed_macro(b: Block) -> None:
     レジスタ変更: A
     """
 
-    end_label = unique_label("__TURBOR_HIGH_SPEED_END__")
+    end_label = ""
+    if not unsafe:
+        end_label = unique_label("__TURBOR_HIGH_SPEED_END__")
 
-    # turboR 以外ではスキップ
-    get_msxver_macro(b)
-    CP.n8(b, 0x03)
-    JP_NZ(b, end_label)
+        # turboR 以外ではスキップ
+        get_msxver_macro(b)
+        # TODO 3より小さいか？ に処理を変更
+        CP.n8(b, 0x03)
+        JP_NZ(b, end_label)
 
     # A=2 (R800 DRAM) で高速モードへ
-    LD.A_n8(b, 0x02)
+    if mode == "ROM":
+        LD.A_n8(b, 0x01)
+    else:
+        LD.A_n8(b, 0x02)
     CALL(b, CHGCPU)
 
-    b.label(end_label)
-    # print("-----")
+    if not unsafe:
+        b.label(end_label)
 
 
-def check_turbor_high_speed_mode_macro(b: Block) -> None:
-    """turboR の高速モード (R800 DRAM) かを判定する。
-
-    - turboR 以外では高速モード扱いにせず、Z フラグを立てる。
-    - turboR の場合は GETCPU で取得した値が 2 (R800 DRAM) なら NZ。
-
+def check_cpu_mode_macro(
+        b: Block, unsafe = False) -> None:
+    """CPUの動作モードを取得する。
+    TURBOR 未満の場合 0 を返す
+    A=0: Z80, 1: R800 ROM, 2: R800 DRAM
+    :param b: Block: コード生成用 Block
+    :param unsafe: True の場合、turboR かどうかの判定をしない
     レジスタ変更: A
     """
 
     turbor_label = unique_label("__TURBOR_HIGH_SPEED_CHECK_TURBOR__")
     end_label = unique_label("__TURBOR_HIGH_SPEED_CHECK_END__")
 
+    if unsafe:
+        CALL(b, GETCPU)
+        return
+
     # turboR 判定
     get_msxver_macro(b)
+    # TODO 3より大きいか？ に処理を変更
     CP.n8(b, 0x03)
     JP_Z(b, turbor_label)
 
-    # turboR 以外は高速モードではない扱い (Z フラグを立てる)
+    # turboR 以外は高速モードではない = 0
     XOR.A(b)
     JP(b, end_label)
 
     # turboR の場合は CPU モードを確認
     b.label(turbor_label)
     CALL(b, GETCPU)
-    CP.n8(b, 0x02)
 
     b.label(end_label)
 
