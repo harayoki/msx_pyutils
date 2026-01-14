@@ -14,7 +14,21 @@ PROJECT_SRC = Path(__file__).resolve().parents[1] / "src"
 if str(PROJECT_SRC) not in sys.path:
     sys.path.insert(0, str(PROJECT_SRC))
 
-from mmsxxasmhelper.core import CALL, DB, Block, Func, INC, JR, JR_Z, LD, LDIR, OR, JP_mHL, rewrite_func_calls
+from mmsxxasmhelper.core import (
+    CALL,
+    CALL_label,
+    DB,
+    Block,
+    Func,
+    INC,
+    JR,
+    JR_Z,
+    LD,
+    LDIR,
+    OR,
+    JP_mHL,
+    dynamic_label_change,
+)
 from mmsxxasmhelper.msxutils import (
     BAKCLR,
     BDRCLR,
@@ -65,10 +79,12 @@ def build_rewrite_func_calls_rom() -> bytes:
 
     PRINT_MESSAGE = Func("print_message", message_before, group="payload")
     PRINT_MESSAGE_ALT = Func("print_message_alt", message_after, group="payload")
+    PRINT_MESSAGE_ENTRY = "print_message_entry"
 
     JR(payload, "main_body")
 
     PRINT_STRING.define(payload)
+    payload.label(PRINT_MESSAGE_ENTRY)
     PRINT_MESSAGE.define(payload)
     PRINT_MESSAGE_ALT.define(payload)
 
@@ -84,7 +100,7 @@ def build_rewrite_func_calls_rom() -> bytes:
 
     LD.HL_label(payload, "HEADER_TEXT")
     PRINT_STRING.call(payload)
-    PRINT_MESSAGE.call(payload)
+    CALL_label(payload, PRINT_MESSAGE_ENTRY)
 
     payload.label("toggle_loop")
 
@@ -99,18 +115,18 @@ def build_rewrite_func_calls_rom() -> bytes:
 
     LD.A_n8(payload, 0x00)
     LD.mHL_A(payload)
-    rewrite_func_calls(payload, PRINT_MESSAGE, PRINT_MESSAGE, origin=RAM_ORIGIN)
+    dynamic_label_change(payload, PRINT_MESSAGE_ENTRY, PRINT_MESSAGE)
     JR(payload, "toggle_done")
 
     payload.label("toggle_to_after")
     LD.A_n8(payload, 0x01)
     LD.mHL_A(payload)
-    rewrite_func_calls(payload, PRINT_MESSAGE, PRINT_MESSAGE_ALT, origin=RAM_ORIGIN)
+    dynamic_label_change(payload, PRINT_MESSAGE_ENTRY, PRINT_MESSAGE_ALT)
 
     payload.label("toggle_done")
     LD.HL_label(payload, "AFTER_LABEL")
     PRINT_STRING.call(payload)
-    PRINT_MESSAGE.call(payload)
+    CALL_label(payload, PRINT_MESSAGE_ENTRY)
     JR(payload, "toggle_loop")
 
     payload.label("HEADER_TEXT")
