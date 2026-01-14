@@ -297,7 +297,7 @@ class Block:
         print("_apply_label_rewrites called", file=sys.stderr)
         for req in self._label_rewrite_requests:
             print(
-                f"  rewrite at pos={req.pos}: {req.old_label} -> {req.new_label}",
+                f"  rewrite at pos={req.pos}(0x{req.pos:04X}): {req.old_label} -> {req.new_label}",
                 file=sys.stderr,
             )
 
@@ -330,7 +330,7 @@ class Block:
                 tmp_block.add_abs16_fixup(pos + 1, req.new_label, offset=offset)
                 if req.debug_log:
                     print(
-                        f"  insert LD HL,{req.new_label}+{offset} at +{pos}",
+                        f"  insert LD HL,{req.new_label}+{offset}",
                         file=sys.stderr,
                     )
                 for site_label in site_labels:
@@ -338,7 +338,7 @@ class Block:
                     tmp_block.add_abs16_fixup(pos + 1, site_label)
                     if req.debug_log:
                         print(
-                            f"  insert LD ({site_label}),HL at +{pos}",
+                            f"  insert LD ({site_label}),HL",
                             file=sys.stderr,
                         )
 

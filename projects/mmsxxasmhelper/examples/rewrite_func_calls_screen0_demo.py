@@ -27,6 +27,7 @@ from mmsxxasmhelper.core import (
     LDIR,
     OR,
     JP_mHL,
+    NOP,
     dynamic_label_change,
 )
 from mmsxxasmhelper.msxutils import (
@@ -39,7 +40,7 @@ from mmsxxasmhelper.msxutils import (
     place_msx_rom_header_macro,
     store_stack_pointer_macro,
 )
-from mmsxxasmhelper.utils import pad_bytes, debug_print_labels
+from mmsxxasmhelper.utils import pad_bytes, debug_print_labels, print_bytes
 
 
 CHGET = 0x009F
@@ -86,7 +87,11 @@ def build_rewrite_func_calls_rom() -> bytes:
     PRINT_STRING.define(payload)
     PRINT_MESSAGE1.define(payload)
     PRINT_MESSAGE2.define(payload)
+    NOP(payload)
+    NOP(payload)
     PRINT_MESSAGE_PROXY.define(payload)
+    NOP(payload)
+    NOP(payload)
 
     payload.label("main_body")
 
@@ -100,19 +105,18 @@ def build_rewrite_func_calls_rom() -> bytes:
 
     LD.HL_label(payload, "HEADER_TEXT")
     PRINT_STRING.call(payload)
-    CALL_label(payload, PRINT_MESSAGE_PROXY.name)
 
     payload.label("LOOOOOP")  # -------------------- LOOP --------------------
 
-    dynamic_label_change(payload, PRINT_MESSAGE_PROXY, PRINT_MESSAGE1)
+    dynamic_label_change(payload, PRINT_MESSAGE_PROXY, PRINT_MESSAGE1, debuglog=True)
     PRINT_MESSAGE_PROXY.call(payload)
 
     LD.HL_label(payload, "PROMPT_TEXT")
     PRINT_STRING.call(payload)
     CALL(payload, CHGET)
 
-    dynamic_label_change(payload, PRINT_MESSAGE_PROXY, PRINT_MESSAGE2)
-    PRINT_MESSAGE_PROXY.call(payload)
+    # dynamic_label_change(payload, PRINT_MESSAGE_PROXY, PRINT_MESSAGE2, debuglog=True)
+    # PRINT_MESSAGE_PROXY.call(payload)
 
     LD.HL_label(payload, "PROMPT_TEXT")
     PRINT_STRING.call(payload)
@@ -152,6 +156,7 @@ def build_rewrite_func_calls_rom() -> bytes:
     DB(b, *payload_bytes)
 
     rom = b.finalize(origin=ORIGIN, groups=["rom"])
+    print_bytes(rom)
     debug_print_labels(b)
     return bytes(pad_bytes(list(rom), PAGE_SIZE, 0x00))
 
