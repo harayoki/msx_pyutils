@@ -147,6 +147,7 @@ class _LabelRewriteRequest:
     pos: int
     old_label: str
     new_label: str
+    debug_log: bool = False
 
 
 class Block:
@@ -197,14 +198,26 @@ class Block:
 
         self._finalize_callbacks.append(callback)
 
-    def add_label_rewrite_request(self, pos: int, old_label: str, new_label: str) -> None:
+    def add_label_rewrite_request(
+        self,
+        pos: int,
+        old_label: str,
+        new_label: str,
+        *,
+        debug_log: bool = False,
+    ) -> None:
         """ラベル書き換えの特殊マクロを登録する。"""
 
         if not self._debug_allows_output():
             return
 
         self._label_rewrite_requests.append(
-            _LabelRewriteRequest(pos=pos, old_label=old_label, new_label=new_label)
+            _LabelRewriteRequest(
+                pos=pos,
+                old_label=old_label,
+                new_label=new_label,
+                debug_log=debug_log,
+            )
         )
 
     def label(self, name: str) -> None:
@@ -315,11 +328,27 @@ class Block:
             for offset, site_labels in sites_by_offset.items():
                 pos = tmp_block.emit(0x21, 0x00, 0x00)
                 tmp_block.add_abs16_fixup(pos + 1, req.new_label, offset=offset)
+                if req.debug_log:
+                    print(
+                        f"  insert LD HL,{req.new_label}+{offset} at +{pos}",
+                        file=sys.stderr,
+                    )
                 for site_label in site_labels:
                     pos = tmp_block.emit(0x22, 0x00, 0x00)
                     tmp_block.add_abs16_fixup(pos + 1, site_label)
+                    if req.debug_log:
+                        print(
+                            f"  insert LD ({site_label}),HL at +{pos}",
+                            file=sys.stderr,
+                        )
 
             self._insert_code(req.pos, tmp_block.code, tmp_block.fixups)
+            if req.debug_log:
+                bytes_dump = " ".join(f"{b:02X}" for b in tmp_block.code)
+                print(
+                    f"  rewrite bytes ({len(tmp_block.code)} bytes): {bytes_dump}",
+                    file=sys.stderr,
+                )
             self._label_rewrite_requests.pop(idx)
 
     def finalize(self, origin: int = 0, groups: Optional[List[str]] = None, func_in_bunk: bool = False) -> bytes:
@@ -930,12 +959,17 @@ def dynamic_label_change(
     b: Block,
     old_label: Func | str,
     new_label: Func | str,
+    *,
+    debuglog: bool = False,
 ) -> None:
     """ラベルアドレスを書き込んだメモリを一括で書き換える特殊マクロ。
 
     ``old_label`` に対応するアドレス書き込み箇所を検出し、``new_label`` の
     アドレスへ差し替える自己書き換えコードを生成する。対象アドレスの一覧は
     ``finalize`` 時点で確定するため、マクロ本体は ``finalize`` 時に展開される。
+
+    debuglog=True を指定すると、``finalize`` 時に生成された書き換え命令列と
+    16bitロード/ストア命令の挿入箇所をログ出力する。
     """
 
     if not b._debug_allows_output():
@@ -948,6 +982,7 @@ def dynamic_label_change(
         b.pc,
         old_label,
         new_label,
+        debug_log=debuglog,
     )
 
 
