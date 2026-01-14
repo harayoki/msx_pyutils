@@ -314,17 +314,32 @@ def debug_print_labels(
 # 便利python関数
 # ---------------------------------------------------------------------------
 
-def print_bytes(data: bytes, step: int = 16, address: int | None = 0, title: str = "") -> None:
+def print_bytes(
+    data: bytes,
+    step: int = 16,
+    address: int | None = 0,
+    title: str = "",
+    *,
+    show_ascii: bool = True,
+) -> None:
     if title:
         print(title)
     for i in range(0, len(data), step):
-        chunk = data[i:i + step]
-        chunk = ' '.join(f'{b:02x}' for b in chunk)
+        raw_chunk = data[i:i + step]
+        chunk = ' '.join(f'{b:02x}' for b in raw_chunk)
+        if show_ascii:
+            padding = '   ' * (step - len(raw_chunk))
+            if padding:
+                chunk = f"{chunk}{padding}"
+            ascii_text = ''.join(
+                chr(b) if 0x20 <= b < 0x7f else '.'
+                for b in raw_chunk
+            ).ljust(step, ' ')
+            chunk = f"{chunk}  {ascii_text}"
         if address is not None:
             chunk = f"{address: 05x}: {chunk}"
             address += step
         print(chunk)
-
 
 class MemAddrAllocator:
     """メモリアドレスを順次管理するユーティリティ。"""
