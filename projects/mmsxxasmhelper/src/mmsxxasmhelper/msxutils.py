@@ -564,9 +564,8 @@ def disable_turobor_high_speed_macro(
         end_label = unique_label("__TURBOR_HIGH_SPEED_DISABLE_END__")
         # turboR 未満ではスキップ
         get_msxver_macro(b)
-        # TODO 3より小さいか？ に処理を変更
         CP.n8(b, 0x03)
-        JP_NZ(b, end_label)
+        JP_C(b, end_label)
 
     LD.A_n8(b, 0x00)
     CALL(b, CHGCPU)
@@ -595,9 +594,8 @@ def enable_turbor_high_speed_macro(
 
         # turboR 以外ではスキップ
         get_msxver_macro(b)
-        # TODO 3より小さいか？ に処理を変更
         CP.n8(b, 0x03)
-        JP_NZ(b, end_label)
+        JP_C(b, end_label)
 
     # A=2 (R800 DRAM) で高速モードへ
     if mode == "ROM":
@@ -629,9 +627,8 @@ def check_cpu_mode_macro(
 
     # turboR 判定
     get_msxver_macro(b)
-    # TODO 3より大きいか？ に処理を変更
     CP.n8(b, 0x03)
-    JP_Z(b, turbor_label)
+    JP_NC(b, turbor_label)
 
     # turboR 以外は高速モードではない = 0
     XOR.A(b)
