@@ -320,10 +320,15 @@ def print_bytes(
     address: int | None = 0,
     title: str = "",
     *,
+    with_header: bool = True,
     show_ascii: bool = True,
 ) -> None:
     if title:
         print(title)
+    if with_header:
+        header = '-'.join(f'{i:02x}' for i in range(step))
+        header = f"       {header}"
+        print(header)
     for i in range(0, len(data), step):
         raw_chunk = data[i:i + step]
         chunk = ' '.join(f'{b:02x}' for b in raw_chunk)
