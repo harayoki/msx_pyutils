@@ -43,7 +43,7 @@ from mmsxxasmhelper.msxutils import (
     place_msx_rom_header_macro,
     store_stack_pointer_macro,
 )
-from mmsxxasmhelper.utils import pad_bytes, unique_label
+from mmsxxasmhelper.utils import pad_bytes, unique_label, debug_print_labels
 
 
 CHGET = 0x009F
@@ -56,12 +56,45 @@ def build_rewrite_func_calls_rom() -> bytes:
     """組み立てた ROM バイト列を返す。"""
 
     payload = Block()
-
     payload.label("payload_entry")
+
+    # def print_hex_nibble(block: Block) -> None:
+    #     """A の下位 4bit を 1 桁の 16進で表示。"""
+    #
+    #     label_digit = unique_label("print_hex_nibble_digit")
+    #     label_done = unique_label("print_hex_nibble_done")
+    #     CP.n8(block, 10)
+    #     JR_C(block, label_digit)
+    #     ADD.A_n8(block, 0x37)
+    #     JR(block, label_done)
+    #     block.label(label_digit)
+    #     ADD.A_n8(block, 0x30)
+    #     block.label(label_done)
+    #     CALL(block, CHPUT)
+    #
+    # def print_hex_byte(block: Block) -> None:
+    #     """A の値を 2 桁の 16進で表示。"""
+    #     LD.B_A(block)
+    #     LD.A_B(block)
+    #     SRL.A(block)
+    #     SRL.A(block)
+    #     SRL.A(block)
+    #     SRL.A(block)
+    #     print_hex_nibble(block)
+    #     LD.A_B(block)
+    #     AND.n8(block, 0x0F)
+    #     print_hex_nibble(block)
+    #
+    # def print_hex_word(block: Block) -> None:
+    #     """DE の値を 4 桁の 16進で表示。"""
+    #     LD.rr(block, "A", "D")
+    #     print_hex_byte(block)
+    #     LD.rr(block, "A", "E")
+    #     print_hex_byte(block)
+    # PRINT_HEX_WORD = Func("print_hex_word", print_hex_word, group="payload")
 
     def print_string(block: Block) -> None:
         """HL を先頭にした 0x00 終端文字列を CHPUT で表示。"""
-
         block.label("print_string_loop")
         LD.rr(block, "A", "mHL")
         OR.A(block)  # ZF=1 なら終端
@@ -70,116 +103,68 @@ def build_rewrite_func_calls_rom() -> bytes:
         INC.HL(block)
         JR(block, "print_string_loop")
         block.label("print_string_end")
-
     PRINT_STRING = Func("print_string", print_string, group="payload")
 
-    def print_hex_nibble(block: Block) -> None:
-        """A の下位 4bit を 1 桁の 16進で表示。"""
-
-        label_digit = unique_label("print_hex_nibble_digit")
-        label_done = unique_label("print_hex_nibble_done")
-        CP.n8(block, 10)
-        JR_C(block, label_digit)
-        ADD.A_n8(block, 0x37)
-        JR(block, label_done)
-        block.label(label_digit)
-        ADD.A_n8(block, 0x30)
-        block.label(label_done)
-        CALL(block, CHPUT)
-
-    def print_hex_byte(block: Block) -> None:
-        """A の値を 2 桁の 16進で表示。"""
-
-        LD.B_A(block)
-        LD.A_B(block)
-        SRL.A(block)
-        SRL.A(block)
-        SRL.A(block)
-        SRL.A(block)
-        print_hex_nibble(block)
-        LD.A_B(block)
-        AND.n8(block, 0x0F)
-        print_hex_nibble(block)
-
-    def print_hex_word(block: Block) -> None:
-        """DE の値を 4 桁の 16進で表示。"""
-
-        LD.rr(block, "A", "D")
-        print_hex_byte(block)
-        LD.rr(block, "A", "E")
-        print_hex_byte(block)
-
-    PRINT_HEX_WORD = Func("print_hex_word", print_hex_word, group="payload")
-
-    def message_before(block: Block) -> None:
+    def message1(block: Block) -> None:
         LD.HL_label(block, "MESSAGE_BEFORE")
         PRINT_STRING.call(block)
+    PRINT_MESSAGE1 = Func("print_message1", message1, group="payload")
 
-    def message_after(block: Block) -> None:
+    def message2(block: Block) -> None:
         LD.HL_label(block, "MESSAGE_AFTER")
         PRINT_STRING.call(block)
+    PRINT_MESSAGE2 = Func("print_message2", message2, group="payload")
 
-    PRINT_MESSAGE = Func("print_message", message_before, group="payload")
-    PRINT_MESSAGE_ALT = Func("print_message_alt", message_after, group="payload")
+    def message_func_proxy(block: Block) -> None:
+        """CALL 先を書き換えられるメッセージ表示関数。"""
+        pass
+    PROXY_FUNC = Func("proxy_func", message_func_proxy, group="payload")
 
     JR(payload, "main_body")
 
+    # PRINT_HEX_WORD.define(payload)
     PRINT_STRING.define(payload)
-    PRINT_HEX_WORD.define(payload)
-    PRINT_MESSAGE.define(payload)
-    PRINT_MESSAGE_ALT.define(payload)
+    PRINT_MESSAGE1.define(payload)
+    PRINT_MESSAGE2.define(payload)
+    PROXY_FUNC.define(payload)
 
     payload.label("main_body")
 
     CALL(payload, INITXT)
     LD.A_n8(payload, 0x0F)  # 白
     LD.mn16_A(payload, FORCLR)
-    LD.A_n8(payload, 0x01)  # 青
+    LD.A_n8(payload, 0x04)  # 青
     LD.mn16_A(payload, BAKCLR)
     LD.mn16_A(payload, BDRCLR)
     CALL(payload, CHGCLR)
 
     LD.HL_label(payload, "HEADER_TEXT")
     PRINT_STRING.call(payload)
-    PRINT_MESSAGE.call(payload)
 
-    payload.label("toggle_loop")
+    payload.label("LOOOOOP")  # ----------------------------------
 
-    LD.HL_label(payload, "PROMPT_TEXT")
+    rewrite_func_calls(
+        payload,
+        PROXY_FUNC,
+        PRINT_MESSAGE1,
+    )
+
     PRINT_STRING.call(payload)
+    PROXY_FUNC.call(payload)
+
     CALL(payload, CHGET)
 
-    LD.HL_label(payload, "TOGGLE_FLAG")
-    LD.rr(payload, "A", "mHL")
-    OR.A(payload)
-    JR_Z(payload, "toggle_to_after")
+    rewrite_func_calls(
+        payload,
+        PROXY_FUNC,
+        PRINT_MESSAGE2)
 
-    LD.A_n8(payload, 0x00)
-    LD.mHL_A(payload)
-    rewrite_func_calls(payload, PRINT_MESSAGE, PRINT_MESSAGE, origin=RAM_ORIGIN, offset=RAM_ORIGIN)
-    JR(payload, "toggle_done")
+    PRINT_STRING.call(payload)
+    PROXY_FUNC.call(payload)
 
-    payload.label("toggle_to_after")
-    LD.A_n8(payload, 0x01)
-    LD.mHL_A(payload)
-    rewrite_func_calls(payload, PRINT_MESSAGE, PRINT_MESSAGE_ALT, origin=RAM_ORIGIN, offset=RAM_ORIGIN)
+    CALL(payload, CHGET)
 
-    payload.label("toggle_done")
-    LD.HL_label(payload, "AFTER_LABEL")
-    PRINT_STRING.call(payload)
-    payload.label("PRINT_MESSAGE_CALL_SITE")
-    PRINT_MESSAGE.call(payload)
-    LD.HL_label(payload, "ADDR_LABEL")
-    PRINT_STRING.call(payload)
-    LD.HL_label(payload, "PRINT_MESSAGE_CALL_SITE")
-    INC.HL(payload)
-    LD.E_mHL(payload)
-    INC.HL(payload)
-    LD.D_mHL(payload)
-    PRINT_HEX_WORD.call(payload)
-    LD.HL_label(payload, "NEWLINE")
-    PRINT_STRING.call(payload)
-    JR(payload, "toggle_loop")
+    JR(payload, "LOOOOOP")  # ----------------------------------
 
     payload.label("HEADER_TEXT")
     DB(payload, *"rewrite_func_calls demo\r\n\r\n".encode("ascii"), 0x00)
@@ -202,10 +187,9 @@ def build_rewrite_func_calls_rom() -> bytes:
     payload.label("MESSAGE_AFTER")
     DB(payload, *"MESSAGE: AFTER\r\n".encode("ascii"), 0x00)
 
-    payload.label("TOGGLE_FLAG")
-    DB(payload, 0x00)
-
     payload_bytes = payload.finalize(origin=RAM_ORIGIN, groups=["payload"])
+
+    debug_print_labels(payload, ORIGIN)
 
     b = Block()
     place_msx_rom_header_macro(b, entry_point=0x4010)
@@ -224,6 +208,9 @@ def build_rewrite_func_calls_rom() -> bytes:
     DB(b, *payload_bytes)
 
     rom = b.finalize(origin=ORIGIN, groups=["rom"])
+
+    debug_print_labels(b, ORIGIN)
+
     return bytes(pad_bytes(list(rom), PAGE_SIZE, 0x00))
 
 

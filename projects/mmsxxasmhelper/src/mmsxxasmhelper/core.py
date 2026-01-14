@@ -817,12 +817,22 @@ def rewrite_func_calls(
     書き換えるなら ``rewrite_func_calls(b, func, new_target, origin=0xC000,
     offset=0xC000)`` のように指定する。
     """
+    print(f"Rewriting CALL sites\n "
+          f"for func: {_normalize_func_name(func)} to : {_normalize_func_name(new_target)}")
 
     call_sites = get_func_call_sites(b, func, origin=origin)
     if not call_sites:
+        # raise ValueError(f"No CALL sites found for func: {_normalize_func_name(func)}")
         return
 
+    print(f"  Found {len(call_sites)} CALL site(s) to rewrite.")
+    for addr in call_sites:
+        print(f"    CALL site at address: 0x{addr:04X}")
+
     target_addr = _resolve_target_address(b, new_target, offset=offset)
+
+    print(f"  New target address: 0x{target_addr:04X}")
+
     LD.HL_n16(b, target_addr)
     for addr in call_sites:
         LD.mn16_HL(b, addr)
