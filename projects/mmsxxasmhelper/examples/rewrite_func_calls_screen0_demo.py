@@ -39,7 +39,7 @@ from mmsxxasmhelper.msxutils import (
     place_msx_rom_header_macro,
     store_stack_pointer_macro,
 )
-from mmsxxasmhelper.utils import pad_bytes
+from mmsxxasmhelper.utils import pad_bytes, debug_print_labels
 
 
 CHGET = 0x009F
@@ -52,102 +52,88 @@ def build_rewrite_func_calls_rom() -> bytes:
     """組み立てた ROM バイト列を返す。"""
 
     payload = Block()
-
     payload.label("payload_entry")
 
     def print_string(block: Block) -> None:
         """HL を先頭にした 0x00 終端文字列を CHPUT で表示。"""
-
         block.label("print_string_loop")
-        LD.rr(block, "A", "mHL")
+        LD.A_mHL(payload)
         OR.A(block)  # ZF=1 なら終端
         JR_Z(block, "print_string_end")
         CALL(block, CHPUT)
         INC.HL(block)
         JR(block, "print_string_loop")
         block.label("print_string_end")
-
     PRINT_STRING = Func("print_string", print_string, group="payload")
 
     def message_before(block: Block) -> None:
         LD.HL_label(block, "MESSAGE_BEFORE")
         PRINT_STRING.call(block)
+    PRINT_MESSAGE1= Func("PRINT_MESSAGE1", message_before, group="payload")
 
     def message_after(block: Block) -> None:
         LD.HL_label(block, "MESSAGE_AFTER")
         PRINT_STRING.call(block)
+    PRINT_MESSAGE2 = Func("PRINT_MESSAGE2", message_after, group="payload")
 
-    PRINT_MESSAGE = Func("print_message", message_before, group="payload")
-    PRINT_MESSAGE_ALT = Func("print_message_alt", message_after, group="payload")
-    PRINT_MESSAGE_ENTRY = "print_message_entry"
+    def message_proxy(block: Block) -> None:
+        """CALL 先を書き換えるためのダミー関数。"""
+        pass
+    PRINT_MESSAGE_PROXY = Func("PRINT_MESSAGE_PROXY", message_proxy, group="payload")
 
     JR(payload, "main_body")
 
     PRINT_STRING.define(payload)
-    payload.label(PRINT_MESSAGE_ENTRY)
-    PRINT_MESSAGE.define(payload)
-    PRINT_MESSAGE_ALT.define(payload)
+    PRINT_MESSAGE1.define(payload)
+    PRINT_MESSAGE2.define(payload)
+    PRINT_MESSAGE_PROXY.define(payload)
 
     payload.label("main_body")
 
     CALL(payload, INITXT)
     LD.A_n8(payload, 0x0F)  # 白
     LD.mn16_A(payload, FORCLR)
-    LD.A_n8(payload, 0x01)  # 青
+    LD.A_n8(payload, 0x04)  # 青
     LD.mn16_A(payload, BAKCLR)
     LD.mn16_A(payload, BDRCLR)
     CALL(payload, CHGCLR)
 
     LD.HL_label(payload, "HEADER_TEXT")
     PRINT_STRING.call(payload)
-    CALL_label(payload, PRINT_MESSAGE_ENTRY)
+    CALL_label(payload, PRINT_MESSAGE_PROXY.name)
 
-    payload.label("toggle_loop")
+    payload.label("LOOOOOP")  # -------------------- LOOP --------------------
+
+    dynamic_label_change(payload, PRINT_MESSAGE_PROXY, PRINT_MESSAGE1)
+    PRINT_MESSAGE_PROXY.call(payload)
 
     LD.HL_label(payload, "PROMPT_TEXT")
     PRINT_STRING.call(payload)
     CALL(payload, CHGET)
 
-    LD.HL_label(payload, "TOGGLE_FLAG")
-    LD.rr(payload, "A", "mHL")
-    OR.A(payload)
-    JR_Z(payload, "toggle_to_after")
+    dynamic_label_change(payload, PRINT_MESSAGE_PROXY, PRINT_MESSAGE2)
+    PRINT_MESSAGE_PROXY.call(payload)
 
-    LD.A_n8(payload, 0x00)
-    LD.mHL_A(payload)
-    dynamic_label_change(payload, PRINT_MESSAGE_ENTRY, PRINT_MESSAGE)
-    JR(payload, "toggle_done")
-
-    payload.label("toggle_to_after")
-    LD.A_n8(payload, 0x01)
-    LD.mHL_A(payload)
-    dynamic_label_change(payload, PRINT_MESSAGE_ENTRY, PRINT_MESSAGE_ALT)
-
-    payload.label("toggle_done")
-    LD.HL_label(payload, "AFTER_LABEL")
+    LD.HL_label(payload, "PROMPT_TEXT")
     PRINT_STRING.call(payload)
-    CALL_label(payload, PRINT_MESSAGE_ENTRY)
-    JR(payload, "toggle_loop")
+    CALL(payload, CHGET)
+
+    JR(payload, "LOOOOOP")  # -------------------- LOOP --------------------
 
     payload.label("HEADER_TEXT")
     DB(payload, *"rewrite_func_calls demo\r\n\r\n".encode("ascii"), 0x00)
 
-    payload.label("MESSAGE_BEFORE")
-    DB(payload, *"MESSAGE: BEFORE\r\n".encode("ascii"), 0x00)
-
     payload.label("PROMPT_TEXT")
     DB(payload, *"Press any key to toggle...\r\n".encode("ascii"), 0x00)
 
-    payload.label("AFTER_LABEL")
-    DB(payload, *"Rewritten call target!\r\n".encode("ascii"), 0x00)
+    payload.label("MESSAGE_BEFORE")
+    DB(payload, *"MESSAGE: BEFORE\r\n".encode("ascii"), 0x00)
 
     payload.label("MESSAGE_AFTER")
     DB(payload, *"MESSAGE: AFTER\r\n".encode("ascii"), 0x00)
 
-    payload.label("TOGGLE_FLAG")
-    DB(payload, 0x00)
-
     payload_bytes = payload.finalize(origin=RAM_ORIGIN, groups=["payload"])
+    debug_print_labels(payload)
 
     b = Block()
     place_msx_rom_header_macro(b, entry_point=0x4010)
@@ -166,6 +152,7 @@ def build_rewrite_func_calls_rom() -> bytes:
     DB(b, *payload_bytes)
 
     rom = b.finalize(origin=ORIGIN, groups=["rom"])
+    debug_print_labels(b)
     return bytes(pad_bytes(list(rom), PAGE_SIZE, 0x00))
 
 

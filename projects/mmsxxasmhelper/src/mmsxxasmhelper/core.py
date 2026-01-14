@@ -281,6 +281,12 @@ class Block:
     def _apply_label_rewrites(self) -> None:
         if not self._label_rewrite_requests:
             return
+        print("_apply_label_rewrites called", file=sys.stderr)
+        for req in self._label_rewrite_requests:
+            print(
+                f"  rewrite at pos={req.pos}: {req.old_label} -> {req.new_label}",
+                file=sys.stderr,
+            )
 
         self._label_rewrite_requests.sort(key=lambda req: req.pos)
         idx = 0
@@ -934,11 +940,14 @@ def dynamic_label_change(
 
     if not b._debug_allows_output():
         return
+    old_label = _normalize_label_name(old_label)
+    new_label = _normalize_label_name(new_label)
+    print(f"Registering dynamic label change: {old_label} -> {new_label}")
 
     b.add_label_rewrite_request(
         b.pc,
-        _normalize_label_name(old_label),
-        _normalize_label_name(new_label),
+        old_label,
+        new_label,
     )
 
 
