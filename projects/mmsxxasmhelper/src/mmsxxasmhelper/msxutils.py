@@ -577,11 +577,13 @@ def check_turbor_high_speed_mode_macro(b: Block) -> None:
 
     - turboR 以外では高速モード扱いにせず、Z フラグを立てる。
     - turboR の場合は GETCPU で取得した値が 2 (R800 DRAM) なら NZ。
+      (高速モード時は A=1、通常時は A=0)
 
     レジスタ変更: A
     """
 
     turbor_label = unique_label("__TURBOR_HIGH_SPEED_CHECK_TURBOR__")
+    high_speed_label = unique_label("__TURBOR_HIGH_SPEED_CHECK_HIGH__")
     end_label = unique_label("__TURBOR_HIGH_SPEED_CHECK_END__")
 
     # turboR 判定
@@ -597,6 +599,13 @@ def check_turbor_high_speed_mode_macro(b: Block) -> None:
     b.label(turbor_label)
     CALL(b, GETCPU)
     CP.n8(b, 0x02)
+    JR_Z(b, high_speed_label)
+
+    XOR.A(b)
+    JP(b, end_label)
+
+    b.label(high_speed_label)
+    LD.A_n8(b, 0x01)
 
     b.label(end_label)
 
