@@ -811,6 +811,11 @@ def rewrite_func_calls(
     生成コードは ``LD HL,new_target`` の後、各 CALL のアドレス書き込み位置へ
     ``LD (nn),HL`` を発行する。 ``origin`` はブロック配置先ベースアドレス。
     ``new_target`` が ``Func`` またはラベルの場合は、事前に定義されている必要がある。
+
+    RAM 展開したコードに対して書き換える場合は、実際の配置先アドレスを
+    ``offset`` に渡す。例えば ``origin=0xC000`` の RAM に配置したブロックを
+    書き換えるなら ``rewrite_func_calls(b, func, new_target, origin=0xC000,
+    offset=0xC000)`` のように指定する。
     """
 
     call_sites = get_func_call_sites(b, func, origin=origin)
