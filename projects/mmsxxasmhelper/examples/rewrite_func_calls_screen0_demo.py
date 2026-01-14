@@ -115,8 +115,8 @@ def build_rewrite_func_calls_rom() -> bytes:
     PRINT_STRING.call(payload)
     CALL(payload, CHGET)
 
-    # dynamic_label_change(payload, PRINT_MESSAGE_PROXY, PRINT_MESSAGE2, debuglog=True)
-    # PRINT_MESSAGE_PROXY.call(payload)
+    dynamic_label_change(payload, PRINT_MESSAGE_PROXY, PRINT_MESSAGE2, debuglog=True)
+    PRINT_MESSAGE_PROXY.call(payload)
 
     LD.HL_label(payload, "PROMPT_TEXT")
     PRINT_STRING.call(payload)
