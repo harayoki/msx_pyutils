@@ -14,7 +14,25 @@ PROJECT_SRC = Path(__file__).resolve().parents[1] / "src"
 if str(PROJECT_SRC) not in sys.path:
     sys.path.insert(0, str(PROJECT_SRC))
 
-from mmsxxasmhelper.core import CALL, DB, Block, Func, INC, JR, JR_Z, LD, LDIR, OR, JP_mHL, rewrite_func_calls
+from mmsxxasmhelper.core import (
+    ADD,
+    AND,
+    CALL,
+    CP,
+    DB,
+    Block,
+    Func,
+    INC,
+    JR,
+    JR_C,
+    JR_Z,
+    LD,
+    LDIR,
+    OR,
+    JP_mHL,
+    SRL,
+    rewrite_func_calls,
+)
 from mmsxxasmhelper.msxutils import (
     BAKCLR,
     BDRCLR,
@@ -55,6 +73,44 @@ def build_rewrite_func_calls_rom() -> bytes:
 
     PRINT_STRING = Func("print_string", print_string, group="payload")
 
+    def print_hex_nibble(block: Block) -> None:
+        """A の下位 4bit を 1 桁の 16進で表示。"""
+
+        label_digit = "print_hex_nibble_digit"
+        label_done = "print_hex_nibble_done"
+        CP.n8(block, 10)
+        JR_C(block, label_digit)
+        ADD.A_n8(block, 0x37)
+        JR(block, label_done)
+        block.label(label_digit)
+        ADD.A_n8(block, 0x30)
+        block.label(label_done)
+        CALL(block, CHPUT)
+
+    def print_hex_byte(block: Block) -> None:
+        """A の値を 2 桁の 16進で表示。"""
+
+        LD.B_A(block)
+        LD.A_B(block)
+        SRL.A(block)
+        SRL.A(block)
+        SRL.A(block)
+        SRL.A(block)
+        print_hex_nibble(block)
+        LD.A_B(block)
+        AND.n8(block, 0x0F)
+        print_hex_nibble(block)
+
+    def print_hex_word(block: Block) -> None:
+        """DE の値を 4 桁の 16進で表示。"""
+
+        LD.rr(block, "A", "D")
+        print_hex_byte(block)
+        LD.rr(block, "A", "E")
+        print_hex_byte(block)
+
+    PRINT_HEX_WORD = Func("print_hex_word", print_hex_word, group="payload")
+
     def message_before(block: Block) -> None:
         LD.HL_label(block, "MESSAGE_BEFORE")
         PRINT_STRING.call(block)
@@ -69,6 +125,7 @@ def build_rewrite_func_calls_rom() -> bytes:
     JR(payload, "main_body")
 
     PRINT_STRING.define(payload)
+    PRINT_HEX_WORD.define(payload)
     PRINT_MESSAGE.define(payload)
     PRINT_MESSAGE_ALT.define(payload)
 
@@ -110,7 +167,18 @@ def build_rewrite_func_calls_rom() -> bytes:
     payload.label("toggle_done")
     LD.HL_label(payload, "AFTER_LABEL")
     PRINT_STRING.call(payload)
+    payload.label("PRINT_MESSAGE_CALL_SITE")
     PRINT_MESSAGE.call(payload)
+    LD.HL_label(payload, "ADDR_LABEL")
+    PRINT_STRING.call(payload)
+    LD.HL_label(payload, "PRINT_MESSAGE_CALL_SITE")
+    INC.HL(payload)
+    LD.E_mHL(payload)
+    INC.HL(payload)
+    LD.D_mHL(payload)
+    PRINT_HEX_WORD.call(payload)
+    LD.HL_label(payload, "NEWLINE")
+    PRINT_STRING.call(payload)
     JR(payload, "toggle_loop")
 
     payload.label("HEADER_TEXT")
@@ -124,6 +192,12 @@ def build_rewrite_func_calls_rom() -> bytes:
 
     payload.label("AFTER_LABEL")
     DB(payload, *"Rewritten call target!\r\n".encode("ascii"), 0x00)
+
+    payload.label("ADDR_LABEL")
+    DB(payload, *"CALL TARGET: $".encode("ascii"), 0x00)
+
+    payload.label("NEWLINE")
+    DB(payload, *"\r\n".encode("ascii"), 0x00)
 
     payload.label("MESSAGE_AFTER")
     DB(payload, *"MESSAGE: AFTER\r\n".encode("ascii"), 0x00)
