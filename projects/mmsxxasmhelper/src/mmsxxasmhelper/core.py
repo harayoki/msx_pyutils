@@ -35,7 +35,8 @@ v0で入っている機能:
 
 - ユーティリティ:
   - unique_label(prefix="__L"): 他と重複しないラベル名を返す
-  - rewrite_func_calls: ある Func を呼ぶ CALL のアドレスをまとめて書き換える
+  - rewrite_func_calls: ある Func を呼ぶ CALL のアドレスをまとめて書き換える (廃止予定)
+  - dynamic_label_change: ラベルアドレスを書き込んだメモリを別ラベルに一括書き換え
 
 - 命令ラッパ:
   - JP 系: 無条件/条件付き絶対ジャンプ (JP, JP_Z, JP_NZ, JP_NC, JP_C, JP_PO, JP_PE, JP_P, JP_M, JP_mHL)
@@ -73,6 +74,7 @@ __all__ = [
     "Func", "define_created_funcs", "define_all_created_funcs_label_only",
     "get_funcs_by_group", "ensure_funcs_defined", "set_funcs_call_offset", "set_funcs_bank",
     "get_func_call_sites", "rewrite_func_calls",
+    "dynamic_label_change",
     "dump_func_bytes", "dump_func_bytes_on_finalize",
     "DB", "DW",
     "LD", "ADD", "ADC", "SUB", "SBC", "CP", "AND", "OR", "XOR", "BIT",
@@ -138,6 +140,15 @@ class Fixup:
     offset: int = 0
 
 
+@dataclass
+class _LabelRewriteRequest:
+    """finalize 時に処理するラベル書き換え要求。"""
+
+    pos: int
+    old_label: str
+    new_label: str
+
+
 class Block:
     """Z80コード(とそのメタ情報)を貯める箱。"""
 
@@ -150,6 +161,7 @@ class Block:
         self.call_sites: Dict[str, List[int]] = {}
         self._finalize_callbacks: List[Callable[["Block", int], None]] = []
         self._debug_section_depth = 0
+        self._label_rewrite_requests: List[_LabelRewriteRequest] = []
 
     def _debug_allows_output(self) -> bool:
         return self._debug_section_depth == 0 or self.debug
@@ -184,6 +196,16 @@ class Block:
         """``finalize`` 完了時に呼び出すコールバックを登録する。"""
 
         self._finalize_callbacks.append(callback)
+
+    def add_label_rewrite_request(self, pos: int, old_label: str, new_label: str) -> None:
+        """ラベル書き換えの特殊マクロを登録する。"""
+
+        if not self._debug_allows_output():
+            return
+
+        self._label_rewrite_requests.append(
+            _LabelRewriteRequest(pos=pos, old_label=old_label, new_label=new_label)
+        )
 
     def label(self, name: str) -> None:
         """現在位置にラベルを張る。再定義はエラー。"""
@@ -229,6 +251,71 @@ class Block:
 
     # --- 出力確定 ---
 
+    def _insert_code(self, pos: int, code: bytearray, fixups: Iterable[Fixup]) -> None:
+        size = len(code)
+        if size == 0:
+            return
+
+        self.code[pos:pos] = code
+        self.pc += size
+
+        for label, addr in list(self.labels.items()):
+            if addr >= pos:
+                self.labels[label] = addr + size
+
+        for fx in self.fixups:
+            if fx.pos >= pos:
+                fx.pos += size
+
+        for name, positions in self.call_sites.items():
+            self.call_sites[name] = [p + size if p >= pos else p for p in positions]
+
+        for req in self._label_rewrite_requests:
+            if req.pos >= pos:
+                req.pos += size
+
+        for fx in fixups:
+            fx.pos += pos
+            self.fixups.append(fx)
+
+    def _apply_label_rewrites(self) -> None:
+        if not self._label_rewrite_requests:
+            return
+
+        self._label_rewrite_requests.sort(key=lambda req: req.pos)
+        idx = 0
+        while idx < len(self._label_rewrite_requests):
+            req = self._label_rewrite_requests[idx]
+            if req.old_label == req.new_label:
+                self._label_rewrite_requests.pop(idx)
+                continue
+
+            target_fixups = [
+                fx for fx in self.fixups if fx.kind == "abs16" and fx.target == req.old_label
+            ]
+            if not target_fixups:
+                self._label_rewrite_requests.pop(idx)
+                continue
+
+            sites_by_offset: Dict[int, List[str]] = {}
+            for fx in target_fixups:
+                site_label = unique_label("__rewrite_label_addr")
+                if site_label in self.labels:
+                    raise ValueError(f"label redefined: {site_label}")
+                self.labels[site_label] = fx.pos
+                sites_by_offset.setdefault(fx.offset, []).append(site_label)
+
+            tmp_block = Block(debug=self.debug)
+            for offset, site_labels in sites_by_offset.items():
+                pos = tmp_block.emit(0x21, 0x00, 0x00)
+                tmp_block.add_abs16_fixup(pos + 1, req.new_label, offset=offset)
+                for site_label in site_labels:
+                    pos = tmp_block.emit(0x22, 0x00, 0x00)
+                    tmp_block.add_abs16_fixup(pos + 1, site_label)
+
+            self._insert_code(req.pos, tmp_block.code, tmp_block.fixups)
+            self._label_rewrite_requests.pop(idx)
+
     def finalize(self, origin: int = 0, groups: Optional[List[str]] = None, func_in_bunk: bool = False) -> bytes:
         """fixupを解決してバイト列を返す。
 
@@ -251,6 +338,8 @@ class Block:
         if undefined_funcs:
             names = ", ".join(sorted(set(undefined_funcs)))
             raise ValueError(f"undefined func(s): {names}")
+
+        self._apply_label_rewrites()
 
         for fx in self.fixups:
             if fx.kind == "abs16":
@@ -773,6 +862,10 @@ def _normalize_func_name(func: Func | str) -> str:
     return func.name if isinstance(func, Func) else func
 
 
+def _normalize_label_name(label: Func | str) -> str:
+    return _normalize_func_name(label)
+
+
 def _resolve_target_address(
     b: Block,
     target: Func | str | int,
@@ -811,6 +904,10 @@ def rewrite_func_calls(
     生成コードは ``LD HL,new_target`` の後、各 CALL のアドレス書き込み位置へ
     ``LD (nn),HL`` を発行する。 ``origin`` はブロック配置先ベースアドレス。
     ``new_target`` が ``Func`` またはラベルの場合は、事前に定義されている必要がある。
+
+    Note:
+        このAPIは廃止予定。ラベルアドレス全体の書き換えには
+        ``dynamic_label_change`` を使用すること。
     """
 
     call_sites = get_func_call_sites(b, func, origin=origin)
@@ -821,6 +918,28 @@ def rewrite_func_calls(
     LD.HL_n16(b, target_addr)
     for addr in call_sites:
         LD.mn16_HL(b, addr)
+
+
+def dynamic_label_change(
+    b: Block,
+    old_label: Func | str,
+    new_label: Func | str,
+) -> None:
+    """ラベルアドレスを書き込んだメモリを一括で書き換える特殊マクロ。
+
+    ``old_label`` に対応するアドレス書き込み箇所を検出し、``new_label`` の
+    アドレスへ差し替える自己書き換えコードを生成する。対象アドレスの一覧は
+    ``finalize`` 時点で確定するため、マクロ本体は ``finalize`` 時に展開される。
+    """
+
+    if not b._debug_allows_output():
+        return
+
+    b.add_label_rewrite_request(
+        b.pc,
+        _normalize_label_name(old_label),
+        _normalize_label_name(new_label),
+    )
 
 
 # ---------------------------------------------------------------------------
