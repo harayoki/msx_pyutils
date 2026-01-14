@@ -43,7 +43,7 @@ from mmsxxasmhelper.msxutils import (
     place_msx_rom_header_macro,
     store_stack_pointer_macro,
 )
-from mmsxxasmhelper.utils import pad_bytes
+from mmsxxasmhelper.utils import pad_bytes, unique_label
 
 
 CHGET = 0x009F
@@ -76,8 +76,8 @@ def build_rewrite_func_calls_rom() -> bytes:
     def print_hex_nibble(block: Block) -> None:
         """A の下位 4bit を 1 桁の 16進で表示。"""
 
-        label_digit = "print_hex_nibble_digit"
-        label_done = "print_hex_nibble_done"
+        label_digit = unique_label("print_hex_nibble_digit")
+        label_done = unique_label("print_hex_nibble_done")
         CP.n8(block, 10)
         JR_C(block, label_digit)
         ADD.A_n8(block, 0x37)
