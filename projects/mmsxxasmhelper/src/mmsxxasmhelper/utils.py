@@ -15,6 +15,7 @@ __all__ = [
     "rng_next_func",
     "ldir_macro",
     "loop_infinite_macro",
+    "call_func_by_zero_one_macro",
     "set_debug",
     "debug_trap",
     "debug_print_labels",
@@ -169,6 +170,51 @@ def ldir_macro(
 # ---------------------------------------------------------------------------
 # DEBUG 用フラグと簡易トラップ
 # ---------------------------------------------------------------------------
+
+
+def call_func_by_zero_one_macro(
+    b: Block,
+    label: str | int,
+    func0: str | int | Func,
+    func1: str | int | Func,
+) -> None:
+    """ラベルの値が 0/1 のときに呼ぶ関数を切り替えるマクロ。
+
+    :param label: 参照するラベル名またはアドレス
+    :param func0: label が 0 の時に呼ぶ関数 (ラベル名/アドレス/Func)
+    :param func1: label が 1 の時に呼ぶ関数 (ラベル名/アドレス/Func)
+    レジスタ変更: A, フラグ
+    """
+
+    if isinstance(label, str):
+        pos = b.emit(0x3A, 0x00, 0x00)  # LD A,(nn)
+        b.add_abs16_fixup(pos + 1, label)
+    else:
+        LD.A_mn16(b, label)
+
+    OR.A(b)
+
+    _emit_cond_call(b, 0xCC, func0)  # CALL Z, nn
+    _emit_cond_call(b, 0xC4, func1)  # CALL NZ, nn
+
+
+def _emit_cond_call(
+    b: Block,
+    opcode: int,
+    target: str | int | Func,
+) -> None:
+    if isinstance(target, Func):
+        label = target.name
+    else:
+        label = target
+
+    if isinstance(label, str):
+        pos = b.emit(opcode, 0x00, 0x00)
+        b.add_abs16_fixup(pos + 1, label)
+        if isinstance(target, Func):
+            b.add_call_site(label, pos + 1)
+    else:
+        b.emit(opcode, label & 0xFF, (label >> 8) & 0xFF)
 
 
 DEBUG: bool = True
