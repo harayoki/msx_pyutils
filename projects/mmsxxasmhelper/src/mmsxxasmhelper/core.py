@@ -36,7 +36,6 @@ v0で入っている機能:
 - ユーティリティ:
   - unique_label(prefix="__L"): 他と重複しないラベル名を返す
   - rewrite_func_calls: ある Func を呼ぶ CALL のアドレスをまとめて書き換える (廃止予定)
-  - dynamic_label_change: ラベルアドレスを書き込んだメモリを別ラベルに一括書き換え
 
 - 命令ラッパ:
   - JP 系: 無条件/条件付き絶対ジャンプ (JP, JP_Z, JP_NZ, JP_NC, JP_C, JP_PO, JP_PE, JP_P, JP_M, JP_mHL)
@@ -74,7 +73,6 @@ __all__ = [
     "Func", "define_created_funcs", "define_all_created_funcs_label_only",
     "get_funcs_by_group", "ensure_funcs_defined", "set_funcs_call_offset", "set_funcs_bank",
     "get_func_call_sites", "rewrite_func_calls",
-    "dynamic_label_change",
     "dump_func_bytes", "dump_func_bytes_on_finalize",
     "DB", "DW",
     "LD", "ADD", "ADC", "SUB", "SBC", "CP", "AND", "OR", "XOR", "BIT",
@@ -912,10 +910,6 @@ def _normalize_func_name(func: Func | str) -> str:
     return func.name if isinstance(func, Func) else func
 
 
-def _normalize_label_name(label: Func | str) -> str:
-    return _normalize_func_name(label)
-
-
 def _resolve_target_address(
     b: Block,
     target: Func | str | int,
@@ -955,9 +949,6 @@ def rewrite_func_calls(
     ``LD (nn),HL`` を発行する。 ``origin`` はブロック配置先ベースアドレス。
     ``new_target`` が ``Func`` またはラベルの場合は、事前に定義されている必要がある。
 
-    Note:
-        このAPIは廃止予定。ラベルアドレス全体の書き換えには
-        ``dynamic_label_change`` を使用すること。
     """
 
     call_sites = get_func_call_sites(b, func, origin=origin)
@@ -968,37 +959,6 @@ def rewrite_func_calls(
     LD.HL_n16(b, target_addr)
     for addr in call_sites:
         LD.mn16_HL(b, addr)
-
-
-def dynamic_label_change(
-    b: Block,
-    old_label: Func | str,
-    new_label: Func | str,
-    *,
-    debuglog: bool = False,
-) -> None:
-    """ラベルアドレスを書き込んだメモリを一括で書き換える特殊マクロ。
-
-    ``old_label`` に対応するアドレス書き込み箇所を検出し、``new_label`` の
-    アドレスへ差し替える自己書き換えコードを生成する。対象アドレスの一覧は
-    ``finalize`` 時点で確定するため、マクロ本体は ``finalize`` 時に展開される。
-
-    debuglog=True を指定すると、``finalize`` 時に生成された書き換え命令列と
-    16bitロード/ストア命令の挿入箇所をログ出力する。
-    """
-
-    if not b._debug_allows_output():
-        return
-    old_label = _normalize_label_name(old_label)
-    new_label = _normalize_label_name(new_label)
-    print(f"Registering dynamic label change: {old_label} -> {new_label}")
-
-    b.add_label_rewrite_request(
-        b.pc,
-        old_label,
-        new_label,
-        debug_log=debuglog,
-    )
 
 
 # ---------------------------------------------------------------------------
