@@ -35,7 +35,6 @@ v0で入っている機能:
 
 - ユーティリティ:
   - unique_label(prefix="__L"): 他と重複しないラベル名を返す
-  - rewrite_func_calls: ある Func を呼ぶ CALL のアドレスをまとめて書き換える (廃止予定)
 
 - 命令ラッパ:
   - JP 系: 無条件/条件付き絶対ジャンプ (JP, JP_Z, JP_NZ, JP_NC, JP_C, JP_PO, JP_PE, JP_P, JP_M, JP_mHL)
@@ -72,7 +71,6 @@ __all__ = [
     "RET", "RET_NZ", "RET_Z", "RET_NC", "RET_C", "RET_PO", "RET_PE", "RET_P", "RET_M",
     "Func", "define_created_funcs", "define_all_created_funcs_label_only",
     "get_funcs_by_group", "ensure_funcs_defined", "set_funcs_call_offset", "set_funcs_bank",
-    "get_func_call_sites", "rewrite_func_calls",
     "dump_func_bytes", "dump_func_bytes_on_finalize",
     "DB", "DW",
     "LD", "ADD", "ADC", "SUB", "SBC", "CP", "AND", "OR", "XOR", "BIT",
@@ -900,65 +898,6 @@ def set_funcs_bank(funcs: Iterable[Func], bank: int | None) -> None:
 
     for func in funcs:
         func.bank = bank
-
-
-# ---------------------------------------------------------------------------
-# Func 呼び出し先の一括書き換え
-# ---------------------------------------------------------------------------
-
-def _normalize_func_name(func: Func | str) -> str:
-    return func.name if isinstance(func, Func) else func
-
-
-def _resolve_target_address(
-    b: Block,
-    target: Func | str | int,
-    *,
-    offset: int = 0,
-) -> int:
-    if isinstance(target, Func):
-        if target.defined_pc is None:
-            raise ValueError(f"Func address not defined for: {target.name}")
-        base = target.defined_pc
-    elif isinstance(target, str):
-        base = b._get_label_addr(target)
-    else:
-        base = target
-    return base + offset
-
-
-def get_func_call_sites(b: Block, func: Func | str, *, origin: int = 0) -> tuple[int, ...]:
-    """``Func`` の CALL アドレス書き込み位置(絶対アドレス)を取得する。"""
-    # NOTE: 動作テスト中。必要であれば利用側で結果の検証を行うこと。
-
-    name = _normalize_func_name(func)
-    return tuple(origin + pos for pos in b.call_sites.get(name, ()))
-
-
-def rewrite_func_calls(
-    b: Block,
-    func: Func | str,
-    new_target: Func | str | int,
-    *,
-    origin: int = 0,
-    offset: int = 0,
-) -> None:
-    """``func`` を呼んでいる CALL をすべて書き換えるコードを出力する。
-
-    生成コードは ``LD HL,new_target`` の後、各 CALL のアドレス書き込み位置へ
-    ``LD (nn),HL`` を発行する。 ``origin`` はブロック配置先ベースアドレス。
-    ``new_target`` が ``Func`` またはラベルの場合は、事前に定義されている必要がある。
-
-    """
-
-    call_sites = get_func_call_sites(b, func, origin=origin)
-    if not call_sites:
-        return
-
-    target_addr = _resolve_target_address(b, new_target, offset=offset)
-    LD.HL_n16(b, target_addr)
-    for addr in call_sites:
-        LD.mn16_HL(b, addr)
 
 
 # ---------------------------------------------------------------------------
