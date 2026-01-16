@@ -104,7 +104,6 @@ from mmsxxasmhelper.core import (
     register_dump_target,
     dump_mem,
     dump_regs,
-    rewrite_func_calls,
 )
 from mmsxxasmhelper.msxutils import (
     CHGCLR,
@@ -920,36 +919,6 @@ class ADDR:
         get_work_byte_length_for_screen0_config_menu(),
         description="コンフィグ用ワークベース",
     )
-    PROXY_SCROLL_NAME_TABLE_CALL_TARGET = madd(
-        "PROXY_SCROLL_NAME_TABLE_CALL_TARGET",
-        2,
-        description="プロキシ: SCROLL_NAME_TABLE_CALL の呼び先",
-    )
-    PROXY_SCROLL_PG_VRAM_XFER_CALL_TARGET = madd(
-        "PROXY_SCROLL_PG_VRAM_XFER_CALL_TARGET",
-        2,
-        description="プロキシ: SCROLL_PG_VRAM_XFER_CALL の呼び先",
-    )
-    PROXY_SCROLL_CT_VRAM_XFER_CALL_TARGET = madd(
-        "PROXY_SCROLL_CT_VRAM_XFER_CALL_TARGET",
-        2,
-        description="プロキシ: SCROLL_CT_VRAM_XFER_CALL の呼び先",
-    )
-    PROXY_SYNC_SCROLL_NT_OUTI_CALL_TARGET = madd(
-        "PROXY_SYNC_SCROLL_NT_OUTI_CALL_TARGET",
-        2,
-        description="プロキシ: SYNC_SCROLL_NT_OUTI_CALL の呼び先",
-    )
-    PROXY_SYNC_SCROLL_PG_OUTI_CALL_TARGET = madd(
-        "PROXY_SYNC_SCROLL_PG_OUTI_CALL_TARGET",
-        2,
-        description="プロキシ: SYNC_SCROLL_PG_OUTI_CALL の呼び先",
-    )
-    PROXY_SYNC_SCROLL_CT_OUTI_CALL_TARGET = madd(
-        "PROXY_SYNC_SCROLL_CT_OUTI_CALL_TARGET",
-        2,
-        description="プロキシ: SYNC_SCROLL_CT_OUTI_CALL の呼び先",
-    )
 
 
 if args.debug_build:
@@ -1031,22 +1000,6 @@ def build_scroll_debug_lines(label_col: int) -> tuple[list[str], list[DebugValue
                 (ADDR.SYNC_SCROLL_CT_VRAM_ADDRS, 2),
                 (ADDR.SYNC_SCROLL_CT_VRAM_ADDRS + 2, 2),
                 (ADDR.SYNC_SCROLL_CT_VRAM_ADDRS + 4, 2),
-            ],
-        ),
-        (
-            "PROXY NT/PG/CT : 0000h 0000h 0000h",
-            [
-                (ADDR.PROXY_SCROLL_NAME_TABLE_CALL_TARGET, 2),
-                (ADDR.PROXY_SCROLL_PG_VRAM_XFER_CALL_TARGET, 2),
-                (ADDR.PROXY_SCROLL_CT_VRAM_XFER_CALL_TARGET, 2),
-            ],
-        ),
-        (
-            "PROXY SYNC N/P/C: 0000h 0000h 0000h",
-            [
-                (ADDR.PROXY_SYNC_SCROLL_NT_OUTI_CALL_TARGET, 2),
-                (ADDR.PROXY_SYNC_SCROLL_PG_OUTI_CALL_TARGET, 2),
-                (ADDR.PROXY_SYNC_SCROLL_CT_OUTI_CALL_TARGET, 2),
             ],
         ),
     ]
@@ -1494,7 +1447,10 @@ def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func
 
         XOR.A(block)
         HALT(block)  # VBLANK待ち
-        SCROLL_NAME_TABLE_CALL_FUNC.call(block)  # VBLANK中はＶＤＰウェイトをなくせる
+        if args.vdp_wait_for_name_table == 0:
+            SCROLL_NAME_TABLE_FUNC.call(block)
+        else:
+            SCROLL_NAME_TABLE_FUNC_NOWAIT.call(block)
 
         # --- パターンジェネレータ転送 ---
         calc_scroll_ptr(block, is_color=False)
@@ -1505,7 +1461,10 @@ def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func
         POP.DE(block)
         POP.HL(block)
         LD.D_n8(block, 24)  # 24行分転送
-        SCROLL_VRAM_XFER_PG_CALL_FUNC.call(block)
+        if args.vdp_wait_for_pattern_gen == 0:
+            SCROLL_VRAM_XFER_FUNC.call(block)
+        else:
+            SCROLL_VRAM_XFER_FUNC_NO_WAIT.call(block)
 
         # --- カラーテーブル転送 ---
         calc_scroll_ptr(block, is_color=True)
@@ -1516,7 +1475,10 @@ def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func
         POP.DE(block)
         POP.HL(block)
         LD.D_n8(block, 24)  # 24行分転送
-        SCROLL_VRAM_XFER_CT_CALL_FUNC.call(block)
+        if args.vdp_wait_for_color_table == 0:
+            SCROLL_VRAM_XFER_FUNC.call(block)
+        else:
+            SCROLL_VRAM_XFER_FUNC_NO_WAIT.call(block)
 
         RET(block)
 
@@ -1560,32 +1522,6 @@ SCROLL_VRAM_XFER_FUNC_NO_WAIT = build_scroll_vram_xfer_func(
 )
 
 
-def build_call_proxy_func(name: str, target: Func, *, group: str) -> Func:
-    def proxy(block: Block) -> None:
-        target.call(block)
-        RET(block)
-
-    return Func(name, proxy, group=group)
-
-
-SCROLL_NAME_TABLE_CALL_FUNC = build_call_proxy_func(
-    "SCROLL_NAME_TABLE_CALL", SCROLL_NAME_TABLE_FUNC, group=SCROLL_VIEWER_FUNC_GROUP
-)
-SCROLL_VRAM_XFER_PG_CALL_FUNC = build_call_proxy_func(
-    "SCROLL_PG_VRAM_XFER_CALL", SCROLL_VRAM_XFER_FUNC, group=SCROLL_VIEWER_FUNC_GROUP
-)
-SCROLL_VRAM_XFER_CT_CALL_FUNC = build_call_proxy_func(
-    "SCROLL_CT_VRAM_XFER_CALL", SCROLL_VRAM_XFER_FUNC, group=SCROLL_VIEWER_FUNC_GROUP
-)
-SYNC_SCROLL_NT_OUTI_CALL_FUNC = build_call_proxy_func(
-    "SYNC_SCROLL_NT_OUTI_CALL", OUTI_256_FUNC, group=SCROLL_VIEWER_FUNC_GROUP
-)
-SYNC_SCROLL_PG_OUTI_CALL_FUNC = build_call_proxy_func(
-    "SYNC_SCROLL_PG_OUTI_CALL", OUTI_256_FUNC, group=SCROLL_VIEWER_FUNC_GROUP
-)
-SYNC_SCROLL_CT_OUTI_CALL_FUNC = build_call_proxy_func(
-    "SYNC_SCROLL_CT_OUTI_CALL", OUTI_256_FUNC, group=SCROLL_VIEWER_FUNC_GROUP
-)
 
 
 def build_update_image_display_func(
@@ -1870,7 +1806,10 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
             LD.HL_n16(b, 0x1800 + (0x100 * buf_index))
             set_vram_write_macro(b)
             POP.HL(b)
-            SYNC_SCROLL_NT_OUTI_CALL_FUNC.call(b)
+            if args.vdp_wait_for_name_table == 0:
+                OUTI_256_FUNC.call(b)
+            else:
+                OUTI_256_FUNC_NO_WAIT.call(b)
             POP.AF(b)
 
         # 方向に応じた表示順でループ
@@ -1887,14 +1826,20 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
             LD.HL_mn16(block, ADDR.SYNC_SCROLL_PG_VRAM_ADDRS + (2 * buf_index))
             set_vram_write_macro(block)
             EX.DE_HL(block)
-            SYNC_SCROLL_PG_OUTI_CALL_FUNC.call(block)
+            if args.vdp_wait_for_pattern_gen == 0:
+                OUTI_256_FUNC.call(block)
+            else:
+                OUTI_256_FUNC_NO_WAIT.call(block)
 
             # --- B: カラー(CT)転送 ---
             LD.DE_n16(block, ADDR.CT_BUFFER + (0x100 * buf_index))
             LD.HL_mn16(block, ADDR.SYNC_SCROLL_CT_VRAM_ADDRS + (2 * buf_index))
             set_vram_write_macro(block)
             EX.DE_HL(block)
-            SYNC_SCROLL_CT_OUTI_CALL_FUNC.call(block)
+            if args.vdp_wait_for_color_table == 0:
+                OUTI_256_FUNC.call(block)
+            else:
+                OUTI_256_FUNC_NO_WAIT.call(block)
             EI(block)
 
         RET(block)
@@ -1946,19 +1891,16 @@ def build_config_scene_func(
             "VDP NT",
             ["WAIT  ", "NOWAIT"],
             ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
-            on_change_addr=VDP_WAIT_NAME_TABLE_CHANGED_FUNC,
         ),
         Screen0ConfigEntry(
             "VDP PG",
             ["WAIT  ", "NOWAIT"],
             ADDR.CONFIG_VDP_WAIT_PATTERN_GEN,
-            on_change_addr=VDP_WAIT_PATTERN_GEN_CHANGED_FUNC,
         ),
         Screen0ConfigEntry(
             "VDP CT",
             ["WAIT  ", "NOWAIT"],
             ADDR.CONFIG_VDP_WAIT_COLOR_TABLE,
-            on_change_addr=VDP_WAIT_COLOR_TABLE_CHANGED_FUNC,
         ),
     ]
 
@@ -2001,100 +1943,6 @@ SYNC_SCROLL_DOWN_TRANSFER_FUNC = build_sync_scroll_transfer_func(
 )
 
 
-def build_vdp_wait_rewrite_func(
-    name: str,
-    config_addr: int,
-    *,
-    wait_calls: Sequence[tuple[Func, Func]],
-    nowait_calls: Sequence[tuple[Func, Func]],
-    wait_records: Sequence[tuple[int, Func]] = (),
-    nowait_records: Sequence[tuple[int, Func]] = (),
-) -> Func:
-    def store_proxy_targets(
-        block: Block, records: Sequence[tuple[int, Func]]
-    ) -> None:
-        for addr, target in records:
-            LD.HL_label(block, target.name)
-            LD.mn16_HL(block, addr)
-
-    def vdp_wait_setting_changed(block: Block) -> None:
-        LD.A_mn16(block, config_addr)
-        OR.A(block)
-        LABEL_NOWAIT = unique_label(f"{name}_NOWAIT")
-        JR_NZ(block, LABEL_NOWAIT)
-        for call_func, target_func in wait_calls:
-            rewrite_func_calls(block, call_func, target_func, origin=ROM_BASE)
-        store_proxy_targets(block, wait_records)
-        RET(block)
-        block.label(LABEL_NOWAIT)
-        for call_func, target_func in nowait_calls:
-            rewrite_func_calls(block, call_func, target_func, origin=ROM_BASE)
-        store_proxy_targets(block, nowait_records)
-        RET(block)
-
-    return Func(name, vdp_wait_setting_changed, group=SCROLL_VIEWER_FUNC_GROUP)
-
-
-VDP_WAIT_NAME_TABLE_CHANGED_FUNC = build_vdp_wait_rewrite_func(
-    "VDP_WAIT_NAME_TABLE_CHANGED",
-    ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
-    wait_calls=(
-        (SCROLL_NAME_TABLE_CALL_FUNC, SCROLL_NAME_TABLE_FUNC),
-        (SYNC_SCROLL_NT_OUTI_CALL_FUNC, OUTI_256_FUNC),
-    ),
-    nowait_calls=(
-        (SCROLL_NAME_TABLE_CALL_FUNC, SCROLL_NAME_TABLE_FUNC_NOWAIT),
-        (SYNC_SCROLL_NT_OUTI_CALL_FUNC, OUTI_256_FUNC_NO_WAIT),
-    ),
-    wait_records=(
-        (ADDR.PROXY_SCROLL_NAME_TABLE_CALL_TARGET, SCROLL_NAME_TABLE_FUNC),
-        (ADDR.PROXY_SYNC_SCROLL_NT_OUTI_CALL_TARGET, OUTI_256_FUNC),
-    ),
-    nowait_records=(
-        (ADDR.PROXY_SCROLL_NAME_TABLE_CALL_TARGET, SCROLL_NAME_TABLE_FUNC_NOWAIT),
-        (ADDR.PROXY_SYNC_SCROLL_NT_OUTI_CALL_TARGET, OUTI_256_FUNC_NO_WAIT),
-    ),
-)
-VDP_WAIT_PATTERN_GEN_CHANGED_FUNC = build_vdp_wait_rewrite_func(
-    "VDP_WAIT_PATTERN_GEN_CHANGED",
-    ADDR.CONFIG_VDP_WAIT_PATTERN_GEN,
-    wait_calls=(
-        (SCROLL_VRAM_XFER_PG_CALL_FUNC, SCROLL_VRAM_XFER_FUNC),
-        (SYNC_SCROLL_PG_OUTI_CALL_FUNC, OUTI_256_FUNC),
-    ),
-    nowait_calls=(
-        (SCROLL_VRAM_XFER_PG_CALL_FUNC, SCROLL_VRAM_XFER_FUNC_NO_WAIT),
-        (SYNC_SCROLL_PG_OUTI_CALL_FUNC, OUTI_256_FUNC_NO_WAIT),
-    ),
-    wait_records=(
-        (ADDR.PROXY_SCROLL_PG_VRAM_XFER_CALL_TARGET, SCROLL_VRAM_XFER_FUNC),
-        (ADDR.PROXY_SYNC_SCROLL_PG_OUTI_CALL_TARGET, OUTI_256_FUNC),
-    ),
-    nowait_records=(
-        (ADDR.PROXY_SCROLL_PG_VRAM_XFER_CALL_TARGET, SCROLL_VRAM_XFER_FUNC_NO_WAIT),
-        (ADDR.PROXY_SYNC_SCROLL_PG_OUTI_CALL_TARGET, OUTI_256_FUNC_NO_WAIT),
-    ),
-)
-VDP_WAIT_COLOR_TABLE_CHANGED_FUNC = build_vdp_wait_rewrite_func(
-    "VDP_WAIT_COLOR_TABLE_CHANGED",
-    ADDR.CONFIG_VDP_WAIT_COLOR_TABLE,
-    wait_calls=(
-        (SCROLL_VRAM_XFER_CT_CALL_FUNC, SCROLL_VRAM_XFER_FUNC),
-        (SYNC_SCROLL_CT_OUTI_CALL_FUNC, OUTI_256_FUNC),
-    ),
-    nowait_calls=(
-        (SCROLL_VRAM_XFER_CT_CALL_FUNC, SCROLL_VRAM_XFER_FUNC_NO_WAIT),
-        (SYNC_SCROLL_CT_OUTI_CALL_FUNC, OUTI_256_FUNC_NO_WAIT),
-    ),
-    wait_records=(
-        (ADDR.PROXY_SCROLL_CT_VRAM_XFER_CALL_TARGET, SCROLL_VRAM_XFER_FUNC),
-        (ADDR.PROXY_SYNC_SCROLL_CT_OUTI_CALL_TARGET, OUTI_256_FUNC),
-    ),
-    nowait_records=(
-        (ADDR.PROXY_SCROLL_CT_VRAM_XFER_CALL_TARGET, SCROLL_VRAM_XFER_FUNC_NO_WAIT),
-        (ADDR.PROXY_SYNC_SCROLL_CT_OUTI_CALL_TARGET, OUTI_256_FUNC_NO_WAIT),
-    ),
-)
 
 
 def build_reset_auto_scroll_turn_counters_func(
@@ -2271,9 +2119,6 @@ def build_boot_bank(
 
     # コンフィグの初期値を設定
     mem_addr_allocator.emit_initial_value_loader(b)
-    VDP_WAIT_NAME_TABLE_CHANGED_FUNC.call(b)
-    VDP_WAIT_PATTERN_GEN_CHANGED_FUNC.call(b)
-    VDP_WAIT_COLOR_TABLE_CHANGED_FUNC.call(b)
     if bgm_start_bank is not None:
         LD.A_n8(b, bgm_start_bank & 0xFF)
         # LD.mn16_A(b, ADDR.BGM_BANK_ADDR)
