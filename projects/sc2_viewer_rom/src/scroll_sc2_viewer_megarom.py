@@ -157,6 +157,7 @@ from mmsxxasmhelper.utils import (
     pad_bytes,
     ldir_macro,
     loop_infinite_macro,
+    call_func_by_zero_one_macro,
     debug_trap,
     set_debug,
     print_bytes,
@@ -1447,10 +1448,12 @@ def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func
 
         XOR.A(block)
         HALT(block)  # VBLANK待ち
-        if args.vdp_wait_for_name_table == 0:
-            SCROLL_NAME_TABLE_FUNC.call(block)
-        else:
-            SCROLL_NAME_TABLE_FUNC_NOWAIT.call(block)
+        call_func_by_zero_one_macro(
+            block,
+            ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
+            SCROLL_NAME_TABLE_FUNC,
+            SCROLL_NAME_TABLE_FUNC_NOWAIT,
+        )
 
         # --- パターンジェネレータ転送 ---
         calc_scroll_ptr(block, is_color=False)
@@ -1800,10 +1803,12 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
             LD.HL_n16(b, 0x1800 + (0x100 * buf_index))
             set_vram_write_macro(b)
             POP.HL(b)
-            if args.vdp_wait_for_name_table == 0:
-                OUTI_256_FUNC.call(b)
-            else:
-                OUTI_256_FUNC_NO_WAIT.call(b)
+            call_func_by_zero_one_macro(
+                b,
+                ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
+                OUTI_256_FUNC,
+                OUTI_256_FUNC_NO_WAIT,
+            )
             POP.AF(b)
 
         # 方向に応じた表示順でループ
@@ -1820,20 +1825,24 @@ def build_sync_scroll_transfer_func(direction: str, *, group: str = DEFAULT_FUNC
             LD.HL_mn16(block, ADDR.SYNC_SCROLL_PG_VRAM_ADDRS + (2 * buf_index))
             set_vram_write_macro(block)
             EX.DE_HL(block)
-            if args.vdp_wait_for_pattern_gen == 0:
-                OUTI_256_FUNC.call(block)
-            else:
-                OUTI_256_FUNC_NO_WAIT.call(block)
+            call_func_by_zero_one_macro(
+                block,
+                ADDR.CONFIG_VDP_WAIT_PATTERN_GEN,
+                OUTI_256_FUNC,
+                OUTI_256_FUNC_NO_WAIT,
+            )
 
             # --- B: カラー(CT)転送 ---
             LD.DE_n16(block, ADDR.CT_BUFFER + (0x100 * buf_index))
             LD.HL_mn16(block, ADDR.SYNC_SCROLL_CT_VRAM_ADDRS + (2 * buf_index))
             set_vram_write_macro(block)
             EX.DE_HL(block)
-            if args.vdp_wait_for_color_table == 0:
-                OUTI_256_FUNC.call(block)
-            else:
-                OUTI_256_FUNC_NO_WAIT.call(block)
+            call_func_by_zero_one_macro(
+                block,
+                ADDR.CONFIG_VDP_WAIT_COLOR_TABLE,
+                OUTI_256_FUNC,
+                OUTI_256_FUNC_NO_WAIT,
+            )
             EI(block)
 
         RET(block)
