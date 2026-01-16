@@ -218,8 +218,8 @@ class Messages:
     @_localized
     def output_help(cls) -> dict[str, str]:
         return {
-            "jp": "出力 ROM ファイル名（未指定なら自動命名）",
-            "en": "Output ROM file name (auto-generated if omitted).",
+            "jp": "出力 ROM ファイル名（未指定なら自動命名、ディレクトリ指定なら中に自動命名）",
+            "en": "Output ROM file name (auto-generated if omitted; if a directory is provided, auto-name inside it).",
         }
 
     @_localized
@@ -3061,6 +3061,42 @@ def ensure_output_writable(path: Path) -> None:
     return
 
 
+def should_auto_name_output(output: Path | None) -> bool:
+    return output is None or (output.exists() and output.is_dir())
+
+
+def default_output_name(
+    prepared_groups: Sequence[tuple[str, list[tuple[str, Image.Image, float]]]],
+    image_data_list: Sequence[ImageData],
+    debug_image_index: int,
+) -> str:
+    if len(prepared_groups) == 1:
+        return f"{prepared_groups[0][0]}_scroll[{image_data_list[0].tile_rows * 8}px]"
+    if prepared_groups:
+        return f"{prepared_groups[0][0]}_scroll{len(prepared_groups)}imgs"
+    return f"debug_scroll{debug_image_index}"
+
+
+def resolve_output_path(
+    output: Path | None,
+    prepared_groups: Sequence[tuple[str, list[tuple[str, Image.Image, float]]]],
+    image_data_list: Sequence[ImageData],
+    *,
+    debug_image_index: int,
+    rom_type_suffix: bool,
+) -> Path:
+    if output is None:
+        out = Path.cwd() / f"{default_output_name(prepared_groups, image_data_list, debug_image_index)}.rom"
+    elif output.exists() and output.is_dir():
+        out = output / f"{default_output_name(prepared_groups, image_data_list, debug_image_index)}.rom"
+    else:
+        out = output
+
+    if rom_type_suffix:
+        out = append_webmsx_rom_type_suffix(out, WebMSXRomType.ASCII16)
+    return out
+
+
 def main() -> None:
 
     background = parse_color(args.background)
@@ -3069,12 +3105,13 @@ def main() -> None:
     bgm_data: bytes | None = None
     bgm_enabled_default = args.bgm
 
-    if args.output is not None and args.rom_type_suffix:
-        args.output = append_webmsx_rom_type_suffix(
-            args.output, WebMSXRomType.ASCII16
-        )
-    if args.output is not None:
-        ensure_output_writable(args.output)
+    if not should_auto_name_output(args.output):
+        output_candidate = args.output
+        if args.rom_type_suffix:
+            output_candidate = append_webmsx_rom_type_suffix(
+                output_candidate, WebMSXRomType.ASCII16
+            )
+        ensure_output_writable(output_candidate)
 
     log_lines: list[str] = []
     input_format_counter: Counter[str] = Counter()
@@ -3210,18 +3247,13 @@ def main() -> None:
         debug_build=args.debug_build,
     )
 
-    out = args.output
-    if out is None:
-        if len(prepared_groups) == 1:
-            name = f"{prepared_groups[0][0]}_scroll[{image_data_list[0].tile_rows * 8}px]"
-        elif prepared_groups:
-            name = f"{prepared_groups[0][0]}_scroll{len(prepared_groups)}imgs"
-        else:
-            name = f"debug_scroll{args.debug_image_index}"
-        out = Path.cwd() / f"{name}.rom"
-    if args.rom_type_suffix:
-        out = append_webmsx_rom_type_suffix(out, WebMSXRomType.ASCII16)
-
+    out = resolve_output_path(
+        args.output,
+        prepared_groups,
+        image_data_list,
+        debug_image_index=args.debug_image_index,
+        rom_type_suffix=args.rom_type_suffix,
+    )
     ensure_output_writable(out)
 
     try:
