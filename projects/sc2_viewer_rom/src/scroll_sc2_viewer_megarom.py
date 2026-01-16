@@ -1448,12 +1448,22 @@ def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func
 
         XOR.A(block)
         HALT(block)  # VBLANK待ち
-        call_func_by_zero_one_macro(
-            block,
-            ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
-            SCROLL_NAME_TABLE_FUNC,
-            SCROLL_NAME_TABLE_FUNC_NOWAIT,
-        )
+
+        # call_func_by_zero_one_macro(
+        #     block,
+        #     ADDR.CONFIG_VDP_WAIT_NAME_TABLE,
+        #     SCROLL_NAME_TABLE_FUNC,
+        #     SCROLL_NAME_TABLE_FUNC_NOWAIT_PARTIAL,  # 部分WAIT必須
+        # )
+
+        # --- ネームテーブル転送 ---
+        # C bios の場合 PARTIAL でも描画が崩れる。
+        # C bios ではない場合 PARTIAL でいけるのだが、
+        # call_func_by_zero_one_macroでの分岐を入れると描画が一部崩れる。
+        # → C biosを考慮しないなら PARTIAL 直書き 考慮するならWAIT直書き。
+        # 全面書き換えはスクロール移動量が多い分、1回の描画は多少多くてもいいので
+        # WAITあり直書きを採用する。
+        SCROLL_NAME_TABLE_FUNC.call(block)
 
         # --- パターンジェネレータ転送 ---
         calc_scroll_ptr(block, is_color=False)
