@@ -3071,7 +3071,7 @@ def default_output_name(
     debug_image_index: int,
 ) -> str:
     if len(prepared_groups) == 1:
-        return f"{prepared_groups[0][0]}_scroll[{image_data_list[0].tile_rows * 8}px]"
+        return f"{prepared_groups[0][0]}_scroll_{image_data_list[0].tile_rows * 8}px"
     if prepared_groups:
         return f"{prepared_groups[0][0]}_scroll{len(prepared_groups)}imgs"
     return f"debug_scroll{debug_image_index}"
