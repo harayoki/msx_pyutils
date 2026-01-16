@@ -1461,10 +1461,7 @@ def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func
         POP.DE(block)
         POP.HL(block)
         LD.D_n8(block, 24)  # 24行分転送
-        if args.vdp_wait_for_pattern_gen == 0:
-            SCROLL_VRAM_XFER_FUNC.call(block)
-        else:
-            SCROLL_VRAM_XFER_FUNC_NO_WAIT.call(block)
+        SCROLL_VRAM_XFER_FUNC.call(block)  # WAIT必須
 
         # --- カラーテーブル転送 ---
         calc_scroll_ptr(block, is_color=True)
@@ -1475,10 +1472,7 @@ def build_draw_scroll_view_func(*, group: str = DEFAULT_FUNC_GROUP_NAME) -> Func
         POP.DE(block)
         POP.HL(block)
         LD.D_n8(block, 24)  # 24行分転送
-        if args.vdp_wait_for_color_table == 0:
-            SCROLL_VRAM_XFER_FUNC.call(block)
-        else:
-            SCROLL_VRAM_XFER_FUNC_NO_WAIT.call(block)
+        SCROLL_VRAM_XFER_FUNC.call(block)  # WAIT必須
 
         RET(block)
 
